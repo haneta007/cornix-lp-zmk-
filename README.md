@@ -1,5 +1,48 @@
 # ZMK Keyboard for Cornix
 
+## Private mirror setup for this Cornix LP build
+
+This repository is intended to be used as a private mirror of
+`hitsmaxft/zmk-keyboard-cornix` for a Cornix LP build. It is not a regular
+GitHub fork, because forks of public repositories share the upstream visibility.
+
+Current scope:
+
+- Build Cornix LP ZMK firmware with the upstream default keymap.
+- Keep Vial keymap migration for later, after a Vial export is available.
+- Keep the dongle-oriented `cornix_ph_left` target available for a future
+  Prospector USB dongle setup.
+
+Initial firmware artifacts from GitHub Actions:
+
+- `cornix_left_default_nosd`: left half, standalone central build.
+- `cornix_left_for_dongle_nosd`: left half prepared for a dongle-central setup.
+- `cornix_right_nosd`: right half.
+- `cornix_reset`: settings reset UF2 for Cornix.
+- `reset_nicenano_nosd`: settings reset UF2 for a nice!nano-style dongle.
+
+First hardware validation, after the Cornix LP is available:
+
+1. Flash the Cornix reset UF2 to both halves first.
+2. Flash `cornix_left_default_nosd` to the left half.
+3. Flash `cornix_right_nosd` to the right half.
+4. Power-cycle both halves and confirm normal split input.
+
+Later Vial migration:
+
+1. Export the current Vial layout when the keyboard is available.
+2. Translate the exported layout into `config/cornix.keymap`.
+3. Rebuild with GitHub Actions and compare the generated ZMK layout against the
+   exported Vial layout.
+
+Later Prospector dongle work:
+
+1. Add the Prospector ZMK module to `config/west.yml`.
+2. Add a Prospector dongle build target using `cornix_dongle_adapter` plus the
+   Prospector shield.
+3. Use `cornix_left_for_dongle_nosd` and `cornix_right_nosd` for the keyboard
+   halves, with the Prospector dongle acting as the USB central.
+
 ## Introduction to Boards and Shields
 
 This repository contains the ZMK firmware configuration for the Cornix split keyboard. Below is an explanation of the different boards and shields available in this project:
