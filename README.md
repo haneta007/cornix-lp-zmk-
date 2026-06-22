@@ -10,14 +10,14 @@ Current scope:
 
 - Build Cornix LP ZMK firmware with the upstream default keymap.
 - Keep Vial keymap migration for later, after a Vial export is available.
-- Keep the dongle-oriented `cornix_ph_left` target available for a future
-  Prospector USB dongle setup.
+- Build a Prospector USB dongle firmware target for the Cornix LP setup.
 
 Initial firmware artifacts from GitHub Actions:
 
 - `cornix_left_default_nosd`: left half, standalone central build.
 - `cornix_left_for_dongle_nosd`: left half prepared for a dongle-central setup.
 - `cornix_right_nosd`: right half.
+- `cornix_prospector_dongle_nosd`: Prospector dongle central build.
 - `cornix_reset`: settings reset UF2 for Cornix.
 - `reset_nicenano_nosd`: settings reset UF2 for a nice!nano-style dongle.
 
@@ -35,13 +35,14 @@ Later Vial migration:
 3. Rebuild with GitHub Actions and compare the generated ZMK layout against the
    exported Vial layout.
 
-Later Prospector dongle work:
+Prospector dongle validation:
 
-1. Add the Prospector ZMK module to `config/west.yml`.
-2. Add a Prospector dongle build target using `cornix_dongle_adapter` plus the
-   Prospector shield.
-3. Use `cornix_left_for_dongle_nosd` and `cornix_right_nosd` for the keyboard
-   halves, with the Prospector dongle acting as the USB central.
+1. Flash the reset UF2 to both Cornix halves and the Prospector first.
+2. Flash `cornix_prospector_dongle_nosd` to the Prospector.
+3. Flash `cornix_left_for_dongle_nosd` to the left half.
+4. Flash `cornix_right_nosd` to the right half.
+5. Pair the left half first, then the right half. The Prospector acts as the USB
+   central connected to the PC.
 
 ## Introduction to Boards and Shields
 

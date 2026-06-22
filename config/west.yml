@@ -10,6 +10,8 @@ manifest:
       url-base: https://github.com/urob
     - name: janpfischer
       url-base: https://github.com/janpfischer
+    - name: haneta007
+      url-base: https://github.com/haneta007
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -29,6 +31,11 @@ manifest:
       remote: englmaxi
       revision: main
       clone-depth: 1
+    - name: prospector-zmk-module
+      remote: haneta007
+      repo-path: prospector---Zmk-module
+      revision: feat/new-status-screens
+      path: modules/prospector-zmk-module
     #- name: zmk-dongle-screen
     #  remote: janpfischer
     #  revision: main
