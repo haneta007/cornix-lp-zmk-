@@ -13,6 +13,8 @@
 #
 ---
 include:
+  # Prospector USB dongle for Cornix LP. The Prospector module's Zephyr 4.1
+  # branch documents xiao_ble//zmk as the board target.
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter
     snippet: studio-rpc-usb-uart nrf52840-nosd
