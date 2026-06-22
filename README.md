@@ -11,6 +11,9 @@ Current scope:
 - Build Cornix LP ZMK firmware with the upstream default keymap.
 - Keep Vial keymap migration for later, after a Vial export is available.
 - Build a Prospector USB dongle firmware target for the Cornix LP setup.
+- Put the Cornix halves into deep sleep after 15 minutes of inactivity. The key
+  matrix is configured as a wake source, so pressing a key should wake a
+  sleeping half; the first key press after sleep may be consumed by wake-up.
 
 Initial firmware artifacts from GitHub Actions:
 
