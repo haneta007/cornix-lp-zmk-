@@ -21,6 +21,7 @@ Initial firmware artifacts from GitHub Actions:
 - `cornix_left_for_dongle_nosd`: left half prepared for a dongle-central setup.
 - `cornix_right_nosd`: right half.
 - `cornix_prospector_dongle_nosd`: Prospector dongle central build.
+- `reset_prospector_xiao_ble_nosd`: settings reset UF2 for the Prospector/XIAO BLE dongle.
 - `cornix_reset`: settings reset UF2 for Cornix.
 - `reset_nicenano_nosd`: settings reset UF2 for a nice!nano-style dongle.
 
@@ -40,11 +41,12 @@ Later Vial migration:
 
 Prospector dongle validation:
 
-1. Flash the reset UF2 to both Cornix halves and the Prospector first.
-2. Flash `cornix_prospector_dongle_nosd` to the Prospector.
-3. Flash `cornix_left_for_dongle_nosd` to the left half.
-4. Flash `cornix_right_nosd` to the right half.
-5. Pair the left half first, then the right half. The Prospector acts as the USB
+1. Flash `cornix_reset` to both Cornix halves.
+2. Flash `reset_prospector_xiao_ble_nosd` to the Prospector.
+3. Flash `cornix_prospector_dongle_nosd` to the Prospector.
+4. Flash `cornix_left_for_dongle_nosd` to the left half.
+5. Flash `cornix_right_nosd` to the right half.
+6. Pair the left half first, then the right half. The Prospector acts as the USB
    central connected to the PC.
 
 ## Introduction to Boards and Shields
