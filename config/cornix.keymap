@@ -72,7 +72,7 @@
             #binding-cells = <0>;
             wait-ms = <40>;
             tap-ms = <40>;
-            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp A &kp N &kp D &kp N6 &kp AT>;
+            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp LS(A) &kp N &kp D &kp N6 &kp AT>;
         };
 
         macro_m2: macro_m2 {
