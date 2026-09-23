@@ -19,7 +19,11 @@
 
 #include "hid_mouse.h"
 
-LOG_MODULE_REGISTER(nape, CONFIG_ZMK_NAPE_DEBUG ? LOG_LEVEL_DBG : LOG_LEVEL_INF);
+#if IS_ENABLED(CONFIG_ZMK_NAPE_DEBUG)
+LOG_MODULE_REGISTER(nape, LOG_LEVEL_DBG);
+#else
+LOG_MODULE_REGISTER(nape, LOG_LEVEL_INF);
+#endif
 
 #define NAPE_MAX_GATT_REPORTS 8
 #define NAPE_REPORT_MAP_SIZE 512
@@ -104,6 +108,11 @@ static int stop_own_scan(void) {
             atomic_clear(&bridge.scanning);
             err = 0;
         }
+    }
+    if (!err && atomic_get(&bridge.connecting) && bridge.conn) {
+        LOG_INF("NAPE: yielding pending connection to split");
+        err = bt_conn_disconnect(bridge.conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        if (err == -EALREADY || err == -ENOTCONN) err = 0;
     }
     k_mutex_unlock(&nape_scan_lock);
     if (!err) {

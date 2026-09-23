@@ -1,0 +1,92 @@
+# Nape Pro → Prospector → Cornix 引き継ぎ
+
+## 状態と安全な切り戻し
+
+作業ブランチは `feat/nape-pro-ble-bridge`。`dev` と既存の `cornix_prospector_dongle_nosd` artifact は残している。Prospectorへ自動書き込みはしていない。Nape Pro本体のファームウェアも変更していない。
+
+変更前の `dev` ベースラインは [Actions run 35829390895](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35829390895) で、Prospector、dongle用Cornix Left、Cornix Rightを含む全jobが成功した。旧Prospector UF2のSHA256は `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC`。ローカル退避先は `C:\Users\hy_ar\AppData\Local\Temp\codex-nape-baseline-35829390895\cornix_prospector_dongle_nosd.uf2`。このUF2を手元にも長期保管しておくと、Actionsの保存期限後も切り戻せる。
+
+問題があれば、Prospectorだけをブートローダーモードにして、旧 `cornix_prospector_dongle_nosd.uf2` を手動でコピーする。Cornix左右の書き戻しは不要。`dev` の `build.yaml` とファームは変更していない。
+
+## 構成
+
+```text
+PC ← USB keyboard + mouse HID ← Prospector / XIAO nRF52840
+                                ├─ ZMK split BLE → Cornix Left
+                                ├─ ZMK split BLE → Cornix Right
+                                └─ BLE HID client → Keychron Nape Pro
+
+Nape Report notification → HID Report Map parser → Zephyr virtual input
+                         → ZMK input listener → USB mouse HID
+                                            └→ temporary layer processor
+                                                NAPE_MOUSE / 700 ms
+```
+
+Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。移動X/Yのみ専用input listenerへ通し、ZMK既存のTemporary Layer Input Processor `zip_temp_layer` がレイヤー10を有効化し、最後の移動から700ms後に解除する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。既存の手動レイヤーには触れない。
+
+BLE接続数は既存 `CONFIG_BT_MAX_CONN=7` と `CONFIG_BT_MAX_PAIRED=7` を維持した。split peripheral数は2のまま。Napeはsplit peripheralとして数えない。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。未発見時と切断時は最大32秒までの指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
+
+## 変更ファイル
+
+| 範囲 | 内容 |
+| --- | --- |
+| `build.yaml` | 既存artifactを残し、通常版とRTTデバッグ版のProspector artifactを追加 |
+| `config/west.yml` | 調査時点の依存commitを固定し、専用ZMK/Prospector module commitを参照 |
+| `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | Nape Bridgeを専用shieldだけでビルド |
+| `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input 2台、listener、700ms processor、BLE設定 |
+| `config/cornix_nape_bridge.keymap` | 既存keymapを取り込み、全キーtransparentの `NAPE_MOUSE` layerを末尾へ追加 |
+| `nape_bridge/bridge.c`, `hid_mouse.[ch]` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入 |
+| `nape_bridge/tests/`, `.github/workflows/nape-parser.yml` | Report IDあり/なし、X/Y、wheel、buttons、異常長を検証 |
+| `.github/workflows/build.yml` | 再利用ビルドworkflowをベースラインcommitへ固定 |
+
+専用ZMK fork `haneta007/zmk` の `feat/nape-pro-ble-bridge` はsplit scanの調停とsplit以外の接続の除外だけを追加した。Prospector module `haneta007/prospector---Zmk-module` の同名ブランチはNape接続をsplit画面状態へ混ぜない変更だけを含む。巨大なZephyr forkは作っていない。
+
+## ビルドとUF2
+
+GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成功したrunの `firmware` artifactに以下が入る。
+
+- `cornix_prospector_nape_bridge_nosd.uf2`：通常使用するProspector版。**これだけをProspectorへ手動で書く。**
+- `cornix_prospector_nape_bridge_debug_nosd.uf2`：SWD/RTTでBLEとHIDの詳細ログを採る検証版。通常版の代わりにProspectorへ手動で書く場合だけ使用。
+- `cornix_prospector_dongle_nosd.uf2`：従来Prospector版。
+- `cornix_left_for_dongle_nosd.uf2`、`cornix_right_nosd.uf2`：既存Cornix左右版。今回の機能のための再書き込みは不要。
+
+新しいビルドのcommitは `config/west.yml` に固定した。ベースラインのZMKは `9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0`、Zephyrは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `ed98221f3b52b7066dbb10ba3af8a29150b93a5a`。依存を浮動の `main` のまま更新していない。
+
+## Nape Proのペアリング
+
+1. ProspectorのUSBをPCへ接続し、Cornix LeftとRightが両方接続されるまで待つ。
+2. Nape Proの側面スイッチを `BT` へ切り替える。既にPCとペアリング済みのBluetoothチャンネルではなく、空いているチャンネルを選ぶ。
+3. Nape Proの丸いFnボタンと `1` / `2` / `3` のいずれかを約4秒押してペアリングモードにする。青いLEDの点滅を確認する。[KeychronのNape Pro案内](https://www.keychron.co.th/blogs/tutorial/nape-pro-nape-pro-quick-start-guide)に基づく操作で、製品の版によって表記が違う場合は付属マニュアルを優先する。
+4. Prospectorは広告名に `Nape Pro` を含むデバイスを探索し、接続後に暗号化・HID service discovery・Report Map read・Input Report購読を進める。PC側のBluetooth設定でNapeをペアリングしない。
+5. ペアリングが済めばProspector側settingsにbondが保存される。Napeが見つからない時は10秒のscan窓を挟んで再探索するため、点滅中にすぐ反応しない場合はしばらく待つ。
+
+## 初回テスト
+
+1. 旧UF2のバックアップを確認してから、通常版 `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ**手動**で書く。Cornix左右は現状維持。
+2. Napeの電源を切ったまま、Cornix左右で通常の文字入力を確認する。
+3. Napeを上記手順でペアリングし、ボールのX/YでPCポインタが動くこと、wheelのスクロール、左/右/中クリックを確認する。
+4. ボールを動かすとProspectorのレイヤー表示が `NAPE_MOUSE` となり、止めて約700ms後に元へ戻ることを確認する。wheelのみ、buttonのみでは延長しないことも確認する。
+5. Napeだけ電源OFFにして、Cornixの文字入力が続くことを確認する。その後Napeを戻し、backoff後に再接続することを確認する。
+6. Cornix片側を一時的にOFF/ONし、Nape scanよりsplit再接続が優先されることを確認する。
+
+この文書作成時点では**Nape Pro実機のReport Map取得・実機ペアリング・PCカーソル・画面の表示は未検証**。CIはコードとUSB HID構成のコンパイル検証であり、実機での成功を意味しない。
+
+## ログとトラブルシューティング
+
+通常版は大量ログを無効化する。デバッグ版は `CONFIG_ZMK_NAPE_DEBUG=y` とSEGGER RTT backendを使う。SWD/RTT対応プローブでログを読む。Windows常駐アプリは通常動作に不要。主な行は `NAPE: scan start`、`candidate found`、`connected`、`security established`、`HID service found`、`report map read`、`subscribed report id=X`、`input ...`、`disconnected`、`reconnect scheduled`。Report Mapと未知のInput Reportはデバッグ版でHEX dumpする。
+
+- `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
+- `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
+- `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
+- `report map read` の後に購読できない：デバッグ版でReport MapとReport Referenceを採取し、parserの対応範囲を確認する。実機descriptorを推測で固定しない。
+- ポインタは動くがレイヤーが変わらない：`config/cornix_nape_bridge.keymap`が選択され、ProspectorにNape版UF2を書いたか確認する。
+- 入力が詰まる：`NAPE: input queue full`、RAM使用量、BLE接続の切断ログを確認する。
+
+## 調整箇所と既知の制限
+
+- タイムアウトは `boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay` の `<&zip_temp_layer 10 700>` の `700` を変更する。移動時だけ更新する構造はそのまま。
+- `NAPE_MOUSE`は現時点で全キーtransparent。クリックはNape本体のボタンから送る。キー割当を追加する場合は `config/cornix_nape_bridge.keymap` の1レイヤーにまとめる。
+- parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
+- Nape実機のReport Mapが未入手なので、デバッグ版で最初に生descriptorと通知を確認する。未知のReportは通常版でUSBへ転送しない。
+- 通常版の最初のCIではRAM `257218 / 262144` バイト（98.12%）で、旧Prospector `252730 / 262144` バイト（96.41%）。実機の連続稼働とBLE 3接続時の余裕は未測定。デバッグ版は追加RAMを使うため、日常使用には通常版を選ぶ。
+- Bluetooth認証方式とレポート内容はNape本体の実機・ファーム版に依存する。実機で不適合が判明した場合は、HEX dumpを根拠に小型parserへ限定的に対応を追加する。
