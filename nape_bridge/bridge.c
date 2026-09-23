@@ -76,6 +76,9 @@ struct bridge_state {
 static struct bridge_state bridge;
 static atomic_t gatt_pending;
 static bool waiting_for_split;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
+static atomic_t bond_inventory_logged;
+#endif
 K_MUTEX_DEFINE(nape_scan_lock);
 K_MUTEX_DEFINE(nape_state_lock);
 
@@ -146,6 +149,37 @@ static bool has_connection(void) {
     return connected;
 }
 
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
+static void log_bond_address(const bt_addr_le_t *addr, uint8_t index, const char *kind) {
+    LOG_INF("NAPE: %s[%u] %02X:%02X:%02X:%02X:%02X:%02X type=%u", kind, index,
+            addr->a.val[5], addr->a.val[4], addr->a.val[3], addr->a.val[2], addr->a.val[1],
+            addr->a.val[0], addr->type);
+}
+
+static void log_stored_bond(const struct bt_bond_info *info, void *user_data) {
+    uint8_t *count = user_data;
+    log_bond_address(&info->addr, (*count)++, "stored bond");
+}
+
+static void log_active_peer(struct bt_conn *conn, void *user_data) {
+    struct bt_conn_info info;
+    uint8_t *count = user_data;
+    if (bt_conn_get_info(conn, &info) || info.type != BT_CONN_TYPE_LE ||
+        info.state != BT_CONN_STATE_CONNECTED || !info.le.dst) {
+        return;
+    }
+    log_bond_address(info.le.dst, (*count)++, "active peer");
+}
+
+static void log_bond_inventory(void) {
+    uint8_t bonds = 0;
+    uint8_t peers = 0;
+    bt_foreach_bond(BT_ID_DEFAULT, log_stored_bond, &bonds);
+    bt_conn_foreach(BT_CONN_TYPE_LE, log_active_peer, &peers);
+    LOG_INF("NAPE: bond inventory stored=%u active LE=%u", bonds, peers);
+}
+#endif
+
 static void scan_work_handler(struct k_work *work) {
     k_mutex_lock(&nape_scan_lock, K_FOREVER);
     if (has_connection() || atomic_get(&bridge.connecting) || atomic_get(&bridge.scanning)) {
@@ -162,6 +196,9 @@ static void scan_work_handler(struct k_work *work) {
         return;
     }
     waiting_for_split = false;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
+    if (atomic_cas(&bond_inventory_logged, 0, 1)) log_bond_inventory();
+#endif
     int err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
     if (!err) {
         atomic_set(&bridge.scanning, 1);

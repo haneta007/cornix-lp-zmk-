@@ -127,6 +127,8 @@ USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LO
 
 Nape shieldだけ `CONFIG_BT_MAX_PAIRED=8` とした修正版は [Actions run 35924820087](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35924820087) の全14 jobで成功。USBログ版の実際のKconfig値は8、リンク時RAMは `243592 / 262144` バイト（92.92%）。次にProspectorへ**手動で書くUF2**は `firmware/nape-bond-slot-35924820087/cornix_prospector_nape_bridge_usb_log_nosd.uf2`、SHA256 `1FEB8D34EAFAB140E0E3433C635F52D10B18C4EC5206CF7F7938A09DB5D78ECD`。従来Prospector版とCornix左右のUF2は前runと完全一致。Nape対応の通常版も生成されたが、GATTサービスとReport Mapが未検証なので現時点ではUSBログ版で診断を続ける。
 
+Zephyrソースを確認すると `bt_foreach_bond()` は現接続ではなく、鍵データを保存した相手だけを列挙する。そのため `7/7` は実際に有効な7件で、単なる「今接続中2台」との数え違いではない。誰の鍵かは現在のログに出していない。次のUSB診断版ではCornix接続後・Nape scan開始前に、保存済みbondと接続中LE peerのアドレスを一度だけ表示する。両方のCornixアドレスと照合し、残りが古い相手かNapeの過去ペアリングかを見分ける。アドレスログは診断版だけで有効化する。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。

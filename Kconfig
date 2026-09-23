@@ -15,3 +15,8 @@ config ZMK_NAPE_DEBUG
     select LOG
     select USE_SEGGER_RTT
     select LOG_BACKEND_RTT
+
+config ZMK_NAPE_BOND_DIAGNOSTICS
+    bool "Log stored Bluetooth bonds for Nape diagnostics"
+    default n
+    depends on ZMK_NAPE_BRIDGE
