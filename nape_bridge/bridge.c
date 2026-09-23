@@ -443,8 +443,8 @@ static uint8_t characteristic_cb(struct bt_conn *conn, const struct bt_gatt_attr
         else if (!bt_uuid_cmp(chrc->uuid, BT_UUID_HIDS_BOOT_MOUSE_IN_REPORT)) bridge.boot_mouse_handle = chrc->value_handle;
         else if (!bt_uuid_cmp(chrc->uuid, BT_UUID_HIDS_REPORT)) {
             if (bridge.report_count == NAPE_MAX_GATT_REPORTS) {
-                LOG_ERR("NAPE: too many HID reports");
-                return BT_GATT_ITER_STOP;
+                LOG_WRN("NAPE: ignoring HID reports beyond %u", NAPE_MAX_GATT_REPORTS);
+                return BT_GATT_ITER_CONTINUE;
             }
             struct gatt_report *report = &bridge.reports[bridge.report_count++];
             report->declaration = attr->handle;
