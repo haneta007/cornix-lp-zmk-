@@ -6,7 +6,7 @@
 
 変更前の `dev` ベースラインは [Actions run 35829390895](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35829390895) で、Prospector、dongle用Cornix Left、Cornix Rightを含む全jobが成功した。旧Prospector UF2のSHA256は `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC`。ローカル退避先は `firmware/baseline-dev-35829390895/cornix_prospector_dongle_nosd.uf2`。このUF2を手元にも長期保管しておくと、Actionsの保存期限後も切り戻せる。
 
-問題があれば、Prospectorだけをブートローダーモードにして、旧 `cornix_prospector_dongle_nosd.uf2` を手動でコピーする。Cornix左右の書き戻しは不要。`dev` の `build.yaml` とファームは変更していない。
+問題があれば、Prospectorだけをブートローダーモードにして、旧 `cornix_prospector_dongle_nosd.uf2` を手動でコピーする。Cornix左右の通常ファーム書き戻しは不要。標準UF2の再書き込みでは保存済みBLE設定・bondは消去されないため、復帰UF2でも同じ症状が残る場合がある。`dev` の `build.yaml` とファームは変更していない。
 
 ## 構成
 
@@ -30,11 +30,12 @@ BLE接続数は既存 `CONFIG_BT_MAX_CONN=7` と `CONFIG_BT_MAX_PAIRED=7` を維
 
 | 範囲 | 内容 |
 | --- | --- |
-| `build.yaml` | 既存artifactを残し、通常版とRTTデバッグ版のProspector artifactを追加 |
+| `build.yaml` | 既存artifactを残し、通常版・RTTデバッグ版・split安定性診断版のProspector artifactを追加 |
 | `config/west.yml` | 調査時点の依存commitを固定し、専用ZMK/Prospector module commitを参照 |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | Nape Bridgeを専用shieldだけでビルド |
 | `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input 2台、listener、700ms processor、BLE設定 |
 | `config/cornix_nape_bridge.keymap` | 既存keymapを取り込み、全キーtransparentの `NAPE_MOUSE` layerを末尾へ追加 |
+| `config/nape_split_stability.conf` | ZMK #3156の診断用に、Prospector側のsplit battery fetchingを無効化 |
 | `nape_bridge/bridge.c`, `hid_mouse.[ch]` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入 |
 | `nape_bridge/tests/`, `.github/workflows/nape-parser.yml` | Report IDあり/なし、X/Y、wheel、buttons、異常長を検証 |
 | `.github/workflows/build.yml` | 再利用ビルドworkflowをベースラインcommitへ固定 |
@@ -49,8 +50,11 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 - `cornix_prospector_nape_bridge_nosd.uf2`：通常使用するProspector版。**これだけをProspectorへ手動で書く。**
 - `cornix_prospector_nape_bridge_debug_nosd.uf2`：SWD/RTTでBLEとHIDの詳細ログを採る検証版。通常版の代わりにProspectorへ手動で書く場合だけ使用。
+- `cornix_prospector_nape_bridge_split_stability_nosd.uf2`：Cornix左右が「接続済み」表示なのに入力しない時の診断版。Prospectorだけに手動で書く。ZMK #3156のsplit GATT discovery競合を避けるため、Prospector上のCornixバッテリー取得/プロキシを無効化する。
 - `cornix_prospector_dongle_nosd.uf2`：従来Prospector版。
 - `cornix_left_for_dongle_nosd.uf2`、`cornix_right_nosd.uf2`：既存Cornix左右版。今回の機能のための再書き込みは不要。
+
+診断版ではProspector画面のCornixバッテリー残量が更新されない。通常版と既存artifactは変更せず残す。
 
 ローカルUF2のSHA256：
 
@@ -92,6 +96,7 @@ feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成され�
 - `report map read` の後に購読できない：デバッグ版でReport MapとReport Referenceを採取し、parserの対応範囲を確認する。実機descriptorを推測で固定しない。
 - ポインタは動くがレイヤーが変わらない：`config/cornix_nape_bridge.keymap`が選択され、ProspectorにNape版UF2を書いたか確認する。
 - 入力が詰まる：`NAPE: input queue full`、RAM使用量、BLE接続の切断ログを確認する。
+- Prospector画面でCornix左右が接続済みなのにキー入力できない：ZMKの複数split peripheralとbattery fetching併用時に、接続表示だけ先に出てposition-stateのGATT購読が欠ける既知の競合がある。診断版で回避する。通常版でのみ再発する場合はこの競合の可能性が高いが、実機ログでの確認は別途必要。
 
 ## 調整箇所と既知の制限
 
