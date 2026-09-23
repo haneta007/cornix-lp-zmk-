@@ -46,7 +46,7 @@ BLE接続数は既存 `CONFIG_BT_MAX_CONN=7` と `CONFIG_BT_MAX_PAIRED=7` を維
 
 GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成功したrunの `firmware` artifactに以下が入る。
 
-最終確認済みのコードは `98783fb88ead66e8bec689542cfe9ba2d50e69b4`。[Actions run 35838121281](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35838121281) は全12 job成功した。同じrunの `firmware` artifactを、ローカルの `firmware/final-35838121281/`（Git管理対象外）にも展開済み。
+通常版とデバッグ版の確認runは `35838121281`（全12 job成功）。Cornixの「接続済み」表示後に入力しない症状の診断artifactを追加したcommitは `a30a1e02abea3307b9d61b2fd5eb697fb9a1c12e`。[Actions run 35890038913](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35890038913) は全13 job成功し、診断UF2を `firmware/split-stability-35890038913/`（Git管理対象外）へ展開済み。
 
 - `cornix_prospector_nape_bridge_nosd.uf2`：通常使用するProspector版。**これだけをProspectorへ手動で書く。**
 - `cornix_prospector_nape_bridge_debug_nosd.uf2`：SWD/RTTでBLEとHIDの詳細ログを採る検証版。通常版の代わりにProspectorへ手動で書く場合だけ使用。
@@ -62,6 +62,9 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 | --- | --- |
 | `cornix_prospector_nape_bridge_nosd.uf2` | `DF054D59F317C46346F19FCDCE15BE6BED6963F28AE8BE2C8117D96F1A798D0F` |
 | `cornix_prospector_nape_bridge_debug_nosd.uf2` | `795FC10EA13F1458B6EFD3801F78AF8206E91EF9854842FD3FF28F06ACDA397F` |
+| `cornix_prospector_nape_bridge_split_stability_nosd.uf2` | `348C40856E53AC9132561D97EBF9EE7AA7C27C501CDAF800CCB18496CC77CE3B` |
+
+新しい診断UF2のローカルパスは `firmware/split-stability-35890038913/cornix_prospector_nape_bridge_split_stability_nosd.uf2`。
 
 feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成されるが、依存ZMKにsplit scan調停の小変更が入るため、変更前の完全な切り戻しには冒頭のベースラインUF2（SHA256 `C43C...`）を使う。
 
@@ -83,6 +86,15 @@ feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成され�
 4. ボールを動かすとProspectorのレイヤー表示が `NAPE_MOUSE` となり、止めて約700ms後に元へ戻ることを確認する。wheelのみ、buttonのみでは延長しないことも確認する。
 5. Napeだけ電源OFFにして、Cornixの文字入力が続くことを確認する。その後Napeを戻し、backoff後に再接続することを確認する。
 6. Cornix片側を一時的にOFF/ONし、Nape scanよりsplit再接続が優先されることを確認する。
+
+## Cornixが接続表示なのに入力しない時
+
+今回の症状は、複数split peripheralと `CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y` の組合せで、BLE接続表示は出てもキー通知用position-stateのGATT購読が欠落するZMK [Issue #3156](https://github.com/zmkfirmware/zmk/issues/3156) の条件に一致する。根本修正案 [PR #3411](https://github.com/zmkfirmware/zmk/pull/3411) は調査時点で未mergeのため、診断artifactはbattery fetching/proxyを無効化して競合を回避する。Prospector画面のCornixバッテリー残量はこの版では更新されない。
+
+1. Nape Proの電源を切る。
+2. `cornix_prospector_nape_bridge_split_stability_nosd.uf2` をProspectorだけに手動で書く。Cornix左右には書かない。
+3. Prospectorを起動し、Cornix Leftを接続して入力を試す。次にRightを接続して両側を試す。
+4. 入力が戻ればsplit GATT discovery競合の可能性が高い。戻らなければこの原因と断定せず、RTT debug logで `Found position state characteristic` と `[SUBSCRIBED]` を確認する。
 
 この文書作成時点では**Nape Pro実機のReport Map取得・実機ペアリング・PCカーソル・画面の表示は未検証**。CIはコードとUSB HID構成のコンパイル検証であり、実機での成功を意味しない。
 
