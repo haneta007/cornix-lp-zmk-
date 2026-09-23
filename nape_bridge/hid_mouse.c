@@ -63,7 +63,9 @@ static uint32_t usage_at(const struct hid_locals *local, uint32_t index) {
     if (index < local->count) {
         return local->usages[index];
     }
-    if (local->has_range && local->minimum + index <= local->maximum) {
+    index -= local->count;
+    if (local->has_range && local->minimum <= local->maximum &&
+        index <= local->maximum - local->minimum) {
         return local->minimum + index;
     }
     return 0;

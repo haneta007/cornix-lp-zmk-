@@ -28,7 +28,7 @@ LOG_MODULE_REGISTER(nape, LOG_LEVEL_INF);
 #define NAPE_MAX_GATT_REPORTS 8
 #define NAPE_REPORT_MAP_SIZE 512
 #define NAPE_MAX_NOTIFICATION 64
-#define NAPE_INPUT_QUEUE_SIZE 16
+#define NAPE_INPUT_QUEUE_SIZE 8
 
 static int virtual_pointer_init(const struct device *dev) { return 0; }
 #define NAPE_POINTER_DEVICE(inst)                                                                  \
@@ -109,9 +109,16 @@ static int stop_own_scan(void) {
             err = 0;
         }
     }
+    struct bt_conn *pending = NULL;
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
     if (!err && atomic_get(&bridge.connecting) && bridge.conn) {
+        pending = bt_conn_ref(bridge.conn);
+    }
+    k_mutex_unlock(&nape_state_lock);
+    if (pending) {
         LOG_INF("NAPE: yielding pending connection to split");
-        err = bt_conn_disconnect(bridge.conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        err = bt_conn_disconnect(pending, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        bt_conn_unref(pending);
         if (err == -EALREADY || err == -ENOTCONN) err = 0;
     }
     k_mutex_unlock(&nape_scan_lock);
@@ -226,14 +233,19 @@ static void candidate_work_handler(struct k_work *work) {
     atomic_clear(&bridge.candidate_ready);
     atomic_set(&bridge.connecting, 1);
     k_work_cancel_delayable(&nape_scan_timeout_work);
-    k_mutex_lock(&nape_state_lock, K_FOREVER);
+    struct bt_conn *pending = NULL;
+    /* The HCI command may wait for Bluetooth RX; never hold the state lock here. */
     err = bt_conn_le_create(&bridge.candidate, BT_CONN_LE_CREATE_CONN,
-                            BT_LE_CONN_PARAM_DEFAULT, &bridge.conn);
+                            BT_LE_CONN_PARAM_DEFAULT, &pending);
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
     if (err) {
         atomic_clear(&bridge.connecting);
-        bridge.conn = NULL;
+    } else if (!bridge.conn && atomic_get(&bridge.connecting)) {
+        bridge.conn = pending;
+        pending = NULL;
     }
     k_mutex_unlock(&nape_state_lock);
+    if (pending) bt_conn_unref(pending);
     k_mutex_unlock(&nape_scan_lock);
     if (err) schedule_scan_backoff();
 }
@@ -245,16 +257,32 @@ static bool active_conn(struct bt_conn *conn) {
     return active;
 }
 
+static bool accept_pending_conn(struct bt_conn *conn) {
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
+    if (!bridge.conn && atomic_get(&bridge.connecting) &&
+        bt_addr_le_cmp(bt_conn_get_dst(conn), &bridge.candidate) == 0) {
+        /* A connection-complete event can overtake the create call's return. */
+        bridge.conn = bt_conn_ref(conn);
+    }
+    bool active = conn && conn == bridge.conn;
+    k_mutex_unlock(&nape_state_lock);
+    return active;
+}
+
 static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_params *params,
                              const void *data, uint16_t length) {
     if (!data) return BT_GATT_ITER_STOP;
-    if (!active_conn(conn)) return BT_GATT_ITER_CONTINUE;
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
+    bool active = conn == bridge.conn;
+    uint32_t generation = bridge.generation;
+    k_mutex_unlock(&nape_state_lock);
+    if (!active) return BT_GATT_ITER_CONTINUE;
     struct gatt_report *report = CONTAINER_OF(params, struct gatt_report, subscription);
     if (length > NAPE_MAX_NOTIFICATION) {
         LOG_WRN("NAPE: oversized input report %u", length);
         return BT_GATT_ITER_CONTINUE;
     }
-    struct queued_input queued = {.generation = bridge.generation, .report_id = report->id,
+    struct queued_input queued = {.generation = generation, .report_id = report->id,
                                   .length = (uint8_t)length};
     memcpy(queued.payload, data, length);
     if (k_msgq_put(&nape_input_queue, &queued, K_NO_WAIT)) {
@@ -506,7 +534,7 @@ static void discovery_work_handler(struct k_work *work) {
 }
 
 static void connected(struct bt_conn *conn, uint8_t err) {
-    if (!active_conn(conn)) return;
+    if (!accept_pending_conn(conn)) return;
     atomic_clear(&bridge.connecting);
     if (err) {
         LOG_ERR("NAPE: connection failed (%u)", err);
