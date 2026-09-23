@@ -4,7 +4,7 @@
 
 作業ブランチは `feat/nape-pro-ble-bridge`。`dev` と既存の `cornix_prospector_dongle_nosd` artifact は残している。Prospectorへ自動書き込みはしていない。Nape Pro本体のファームウェアも変更していない。
 
-変更前の `dev` ベースラインは [Actions run 35829390895](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35829390895) で、Prospector、dongle用Cornix Left、Cornix Rightを含む全jobが成功した。旧Prospector UF2のSHA256は `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC`。ローカル退避先は `C:\Users\hy_ar\AppData\Local\Temp\codex-nape-baseline-35829390895\cornix_prospector_dongle_nosd.uf2`。このUF2を手元にも長期保管しておくと、Actionsの保存期限後も切り戻せる。
+変更前の `dev` ベースラインは [Actions run 35829390895](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35829390895) で、Prospector、dongle用Cornix Left、Cornix Rightを含む全jobが成功した。旧Prospector UF2のSHA256は `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC`。ローカル退避先は `firmware/baseline-dev-35829390895/cornix_prospector_dongle_nosd.uf2`。このUF2を手元にも長期保管しておくと、Actionsの保存期限後も切り戻せる。
 
 問題があれば、Prospectorだけをブートローダーモードにして、旧 `cornix_prospector_dongle_nosd.uf2` を手動でコピーする。Cornix左右の書き戻しは不要。`dev` の `build.yaml` とファームは変更していない。
 
@@ -45,7 +45,7 @@ BLE接続数は既存 `CONFIG_BT_MAX_CONN=7` と `CONFIG_BT_MAX_PAIRED=7` を維
 
 GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成功したrunの `firmware` artifactに以下が入る。
 
-最終確認済みのコードは `3cb2e508da34f6bf471f9b0bf2bd8f8a550f49bd`。[Actions run 35837556108](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35837556108) は全12 job成功した。同じrunの `firmware` artifactを、ローカルの `firmware/`（Git管理対象外）にも展開済み。
+最終確認済みのコードは `98783fb88ead66e8bec689542cfe9ba2d50e69b4`。[Actions run 35838121281](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35838121281) は全12 job成功した。同じrunの `firmware` artifactを、ローカルの `firmware/final-35838121281/`（Git管理対象外）にも展開済み。
 
 - `cornix_prospector_nape_bridge_nosd.uf2`：通常使用するProspector版。**これだけをProspectorへ手動で書く。**
 - `cornix_prospector_nape_bridge_debug_nosd.uf2`：SWD/RTTでBLEとHIDの詳細ログを採る検証版。通常版の代わりにProspectorへ手動で書く場合だけ使用。
@@ -56,8 +56,8 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 | UF2 | SHA256 |
 | --- | --- |
-| `cornix_prospector_nape_bridge_nosd.uf2` | `CD96DA4EC0774FAD3A27C4BFC6510A512C13244E9D875B782DBCC1141072CA37` |
-| `cornix_prospector_nape_bridge_debug_nosd.uf2` | `B1111E9EB0101403F7EA344D7F9478230BBE824D8C50F8D52CAFEC60CF09C58B` |
+| `cornix_prospector_nape_bridge_nosd.uf2` | `DF054D59F317C46346F19FCDCE15BE6BED6963F28AE8BE2C8117D96F1A798D0F` |
+| `cornix_prospector_nape_bridge_debug_nosd.uf2` | `795FC10EA13F1458B6EFD3801F78AF8206E91EF9854842FD3FF28F06ACDA397F` |
 
 feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成されるが、依存ZMKにsplit scan調停の小変更が入るため、変更前の完全な切り戻しには冒頭のベースラインUF2（SHA256 `C43C...`）を使う。
 
