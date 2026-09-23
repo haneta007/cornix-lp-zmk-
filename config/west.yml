@@ -15,7 +15,7 @@ manifest:
   projects:
     - name: zmk
       remote: haneta007
-      revision: 7dd229cc2dd69f4d71490134dabcbc0d12cd9101
+      revision: edafb3b058445329d4cbc226621eb1d37529480c
       clone-depth: 1
       import:
         file: app/west.yml

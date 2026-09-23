@@ -12,3 +12,6 @@ config ZMK_NAPE_DEBUG
     bool "Verbose Nape HID and BLE logging"
     default n
     depends on ZMK_NAPE_BRIDGE
+    select LOG
+    select USE_SEGGER_RTT
+    select LOG_BACKEND_RTT
