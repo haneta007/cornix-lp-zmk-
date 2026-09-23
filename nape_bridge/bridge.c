@@ -56,6 +56,8 @@ struct bridge_state {
     uint8_t backoff_step;
     uint16_t hid_start;
     uint16_t hid_end;
+    atomic_t services_scanned;
+    uint8_t service_count;
     uint16_t map_handle;
     uint16_t protocol_handle;
     uint16_t boot_mouse_handle;
@@ -475,14 +477,30 @@ static uint8_t characteristic_cb(struct bt_conn *conn, const struct bt_gatt_attr
 static uint8_t service_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                           struct bt_gatt_discover_params *params) {
     if (!active_conn(conn)) return BT_GATT_ITER_STOP;
-    if (!attr || !attr->user_data) {
+    if (!attr) {
+        atomic_set(&bridge.services_scanned, 1);
         atomic_clear(&gatt_pending);
-        LOG_ERR("NAPE: HID service missing");
+        LOG_ERR("NAPE: GATT discovery ended without HID service (%u services)",
+                bridge.service_count);
         return BT_GATT_ITER_STOP;
     }
+    if (!attr->user_data) {
+        LOG_ERR("NAPE: service at handle %u has no value", attr->handle);
+        return BT_GATT_ITER_CONTINUE;
+    }
     const struct bt_gatt_service_val *service = attr->user_data;
+    bridge.service_count++;
+    if (service->uuid->type == BT_UUID_TYPE_16) {
+        LOG_INF("NAPE: GATT service 0x%04x (%u-%u)", BT_UUID_16(service->uuid)->val,
+                attr->handle, service->end_handle);
+    } else if (service->uuid->type == BT_UUID_TYPE_128) {
+        LOG_INF("NAPE: GATT service 128-bit (%u-%u)", attr->handle, service->end_handle);
+        LOG_HEXDUMP_INF(BT_UUID_128(service->uuid)->val, 16, "NAPE: service UUID bytes");
+    }
+    if (bt_uuid_cmp(service->uuid, BT_UUID_HIDS)) return BT_GATT_ITER_CONTINUE;
     bridge.hid_start = attr->handle + 1;
     bridge.hid_end = service->end_handle;
+    atomic_set(&bridge.services_scanned, 1);
     atomic_clear(&gatt_pending);
     LOG_INF("NAPE: HID service found (%u-%u)", bridge.hid_start, bridge.hid_end);
     k_work_submit(&nape_discovery_work);
@@ -492,6 +510,7 @@ static uint8_t service_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 static void discovery_work_handler(struct k_work *work) {
     k_mutex_lock(&nape_state_lock, K_FOREVER);
     if (!bridge.conn || bt_conn_get_security(bridge.conn) < BT_SECURITY_L2 ||
+        (atomic_get(&bridge.services_scanned) && !bridge.hid_start) ||
         !atomic_cas(&gatt_pending, 0, 1)) {
         k_mutex_unlock(&nape_state_lock);
         return;
@@ -501,7 +520,10 @@ static void discovery_work_handler(struct k_work *work) {
     if (!bridge.hid_start) {
         memset(bridge.reports, 0, sizeof(bridge.reports));
         memset(&bridge.parsed_map, 0, sizeof(bridge.parsed_map));
-        bridge.discovery.uuid = BT_UUID_HIDS;
+        bridge.service_count = 0;
+        /* Enumerate services once so an absent HIDS UUID can be distinguished
+         * from a failure in UUID-filtered discovery on the actual device. */
+        bridge.discovery.uuid = NULL;
         bridge.discovery.func = service_cb;
         bridge.discovery.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
         bridge.discovery.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
@@ -542,6 +564,12 @@ static void discovery_work_handler(struct k_work *work) {
     bt_conn_unref(conn);
 }
 
+static void count_bond(const struct bt_bond_info *info, void *user_data) {
+    ARG_UNUSED(info);
+    uint8_t *count = user_data;
+    (*count)++;
+}
+
 static void connected(struct bt_conn *conn, uint8_t err) {
     if (!accept_pending_conn(conn)) return;
     atomic_clear(&bridge.connecting);
@@ -556,7 +584,14 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     }
     LOG_INF("NAPE: connected");
     int rc = bt_conn_set_security(conn, BT_SECURITY_L2);
-    if (rc && rc != -EALREADY) LOG_ERR("NAPE: security request failed (%d)", rc);
+    if (rc && rc != -EALREADY) {
+        uint8_t bonds = 0;
+        bt_foreach_bond(BT_ID_DEFAULT, count_bond, &bonds);
+        LOG_ERR("NAPE: security request failed (%d), bonds %u/%u", rc, bonds,
+                CONFIG_BT_MAX_PAIRED);
+        bt_conn_disconnect(conn, BT_HCI_ERR_AUTH_FAIL);
+        return;
+    }
     if (bt_conn_get_security(conn) >= BT_SECURITY_L2) k_work_submit(&nape_discovery_work);
 }
 
@@ -571,6 +606,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     atomic_clear(&bridge.connecting);
     bridge.hid_start = 0;
     bridge.hid_end = 0;
+    atomic_clear(&bridge.services_scanned);
+    bridge.service_count = 0;
     bridge.map_handle = 0;
     bridge.protocol_handle = 0;
     bridge.boot_mouse_handle = 0;

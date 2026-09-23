@@ -113,7 +113,11 @@ feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成され�
 3. `NAPE: bridge initialized`、`waiting for Cornix split discovery`、`scan start` または `scan start failed`、`candidate found`、`connected`、`security established` の最終到達点を確認する。`scan start` が繰り返されるのに `candidate found` が無ければ広告名/形式を調べる。`candidate found` の後に失敗すればBLE接続/認証を調べる。
 4. ログ取得後、Prospectorへ通常のNape対応版または旧dongle版UF2を手動で戻す。
 
-USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LOG_BACKEND_UART=y`）を確認した。実機のUSB列挙とログ採取、Napeの接続はこれから確認する。
+USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LOG_BACKEND_UART=y`）を確認した。実機のUSB列挙・ログ採取・NapeのBLE接続も確認した。HID入力の転送は未確認。
+
+2026-09-24の実機ログでは、WindowsのCOM20からログを取得できた。Napeは `candidate found` → `connected` → `security established (level 2)` まで進んだが、その後 `HID service missing` となった。約18秒後にNape側から切断され、次の接続では `security request failed (-12)` が出た。Cornix左右の文字入力は動作している。これらは「Napeを発見できない」「BLE接続ができない」という原因を否定するが、NapeにHIDサービスが本当に無いのか、UUID指定のGATT探索だけが失敗したのかは、このログだけでは区別できない。`-12` の原因も未確定。
+
+そのため次の診断版では、Napeの全primary GATT serviceを一度列挙してUUIDとhandle範囲を記録する。0x1812（HID Service）があれば後続のReport Map探索を続ける。再接続時のsecurity要求が失敗した場合は、その時点のbond数もログへ出し、接続を切ってbackoffへ戻す。Cornix側のbondは消去しない。
 
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
