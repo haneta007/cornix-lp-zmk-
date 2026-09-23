@@ -45,10 +45,21 @@ BLE接続数は既存 `CONFIG_BT_MAX_CONN=7` と `CONFIG_BT_MAX_PAIRED=7` を維
 
 GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成功したrunの `firmware` artifactに以下が入る。
 
+最終確認済みのコードは `3cb2e508da34f6bf471f9b0bf2bd8f8a550f49bd`。[Actions run 35837556108](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35837556108) は全12 job成功した。同じrunの `firmware` artifactを、ローカルの `firmware/`（Git管理対象外）にも展開済み。
+
 - `cornix_prospector_nape_bridge_nosd.uf2`：通常使用するProspector版。**これだけをProspectorへ手動で書く。**
 - `cornix_prospector_nape_bridge_debug_nosd.uf2`：SWD/RTTでBLEとHIDの詳細ログを採る検証版。通常版の代わりにProspectorへ手動で書く場合だけ使用。
 - `cornix_prospector_dongle_nosd.uf2`：従来Prospector版。
 - `cornix_left_for_dongle_nosd.uf2`、`cornix_right_nosd.uf2`：既存Cornix左右版。今回の機能のための再書き込みは不要。
+
+ローカルUF2のSHA256：
+
+| UF2 | SHA256 |
+| --- | --- |
+| `cornix_prospector_nape_bridge_nosd.uf2` | `CD96DA4EC0774FAD3A27C4BFC6510A512C13244E9D875B782DBCC1141072CA37` |
+| `cornix_prospector_nape_bridge_debug_nosd.uf2` | `B1111E9EB0101403F7EA344D7F9478230BBE824D8C50F8D52CAFEC60CF09C58B` |
+
+feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成されるが、依存ZMKにsplit scan調停の小変更が入るため、変更前の完全な切り戻しには冒頭のベースラインUF2（SHA256 `C43C...`）を使う。
 
 新しいビルドのcommitは `config/west.yml` に固定した。ベースラインのZMKは `9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0`、Zephyrは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `ed98221f3b52b7066dbb10ba3af8a29150b93a5a`。依存を浮動の `main` のまま更新していない。
 
@@ -88,5 +99,5 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 - `NAPE_MOUSE`は現時点で全キーtransparent。クリックはNape本体のボタンから送る。キー割当を追加する場合は `config/cornix_nape_bridge.keymap` の1レイヤーにまとめる。
 - parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
 - Nape実機のReport Mapが未入手なので、デバッグ版で最初に生descriptorと通知を確認する。未知のReportは通常版でUSBへ転送しない。
-- 通常版の最初のCIではRAM `257218 / 262144` バイト（98.12%）で、旧Prospector `252730 / 262144` バイト（96.41%）。実機の連続稼働とBLE 3接続時の余裕は未測定。デバッグ版は追加RAMを使うため、日常使用には通常版を選ぶ。
+- 最終CIのリンク時RAMは通常版 `256770 / 262144` バイト（97.95%、残り5374バイト）、デバッグ版 `259714 / 262144` バイト（99.07%、残り2430バイト）。旧Prospectorのベースラインは `252730 / 262144` バイト（96.41%）。これは静的配置と設定済みスタックの値であり、BLE 3接続時の実際のスタック余裕や連続稼働は未測定。特にデバッグ版は余裕が小さいため短時間のRTT調査用とし、通常運用は通常版を使う。
 - Bluetooth認証方式とレポート内容はNape本体の実機・ファーム版に依存する。実機で不適合が判明した場合は、HEX dumpを根拠に小型parserへ限定的に対応を追加する。
