@@ -123,6 +123,10 @@ USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LO
 
 書き込み後はCOM20などのUSBログポートを開いてからNapeをペアリング点滅させ、`NAPE: GATT service 0x....`、`NAPE: HID service found` または `NAPE: GATT discovery ended without HID service`、`NAPE: security request failed ... bonds N/7` を記録する。ポート番号は再列挙で変わる場合がある。
 
+上記診断版の実機ログ（2026-09-24）では、Nape検出とBLE接続は繰り返し成功したが、毎回 `NAPE: security request failed (-12), bonds 7/7` となりGATT列挙前に切断した。固定済みZephyrの `smp_send_pairing_req()` は鍵スロットを取得できない時に `-ENOMEM` を返すため、この時点の直接の阻害要因はbond枠満杯と判断した。Cornixの既存bondを消す操作はしていない。
+
+Nape shieldだけ `CONFIG_BT_MAX_PAIRED=8` とした修正版は [Actions run 35924820087](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35924820087) の全14 jobで成功。USBログ版の実際のKconfig値は8、リンク時RAMは `243592 / 262144` バイト（92.92%）。次にProspectorへ**手動で書くUF2**は `firmware/nape-bond-slot-35924820087/cornix_prospector_nape_bridge_usb_log_nosd.uf2`、SHA256 `1FEB8D34EAFAB140E0E3433C635F52D10B18C4EC5206CF7F7938A09DB5D78ECD`。従来Prospector版とCornix左右のUF2は前runと完全一致。Nape対応の通常版も生成されたが、GATTサービスとReport Mapが未検証なので現時点ではUSBログ版で診断を続ける。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
