@@ -102,6 +102,19 @@ feature branchの従来名 `cornix_prospector_dongle_nosd.uf2` も生成され�
 
 通常版は大量ログを無効化する。デバッグ版は `CONFIG_ZMK_NAPE_DEBUG=y` とSEGGER RTT backendを使う。SWD/RTT対応プローブでログを読む。Windows常駐アプリは通常動作に不要。主な行は `NAPE: scan start`、`candidate found`、`connected`、`security established`、`HID service found`、`report map read`、`subscribed report id=X`、`input ...`、`disconnected`、`reconnect scheduled`。Report Mapと未知のInput Reportはデバッグ版でHEX dumpする。
 
+### 実機ペアリング失敗時のUSBログ診断版
+
+2026-09-24の実機観察では、Nape対応版をProspectorへ入れてCornix左右の文字入力は動作した。WindowsのBluetooth一覧には `Keychron Nape Pro` が表示され、Napeの青いペアリング点滅は接続せずに終了した。Prospector側のscan・接続・認証のどこで止まるかは未確認。
+
+この切り分け用に `cornix_prospector_nape_bridge_usb_log_nosd.uf2` を追加した。[Actions run 35893902660](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35893902660) は全14 job成功し、USBログ版のRAM使用量は `243336 / 262144` バイト（92.83%）。UF2は `firmware/nape-usb-log-35893902660/cornix_prospector_nape_bridge_usb_log_nosd.uf2`、SHA256は `9A53F7D55A595C360E587FE5F8CFA192DD8B90257B69034E28D6FF94DB7FEC5D`。Cornix左右のUF2 hashは前回と同一。
+
+1. この診断UF2を**Prospectorだけ**に手動で書く。Cornix左右の入力を確認する。この版はUSB CDCポートを文字ログ専用にし、ZMK Studio RPCを無効化する。通常版・RTT版・復帰版のartifactは残している。
+2. Windowsで追加されたCOMポートをシリアル端末で開く。115200 bpsを指定し、必要ならDTRを有効にする。ログ取得を始めてからNapeをBTの空きチャンネルでペアリング点滅させ、少なくとも1分記録する。通常利用にWindows常駐アプリは不要。
+3. `NAPE: bridge initialized`、`waiting for Cornix split discovery`、`scan start` または `scan start failed`、`candidate found`、`connected`、`security established` の最終到達点を確認する。`scan start` が繰り返されるのに `candidate found` が無ければ広告名/形式を調べる。`candidate found` の後に失敗すればBLE接続/認証を調べる。
+4. ログ取得後、Prospectorへ通常のNape対応版または旧dongle版UF2を手動で戻す。
+
+USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LOG_BACKEND_UART=y`）を確認した。実機のUSB列挙とログ採取、Napeの接続はこれから確認する。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
