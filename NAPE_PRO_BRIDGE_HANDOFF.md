@@ -129,6 +129,8 @@ Nape shieldだけ `CONFIG_BT_MAX_PAIRED=8` とした修正版は [Actions run 35
 
 Zephyrソースを確認すると `bt_foreach_bond()` は現接続ではなく、鍵データを保存した相手だけを列挙する。そのため `7/7` は実際に有効な7件で、単なる「今接続中2台」との数え違いではない。誰の鍵かは現在のログに出していない。次のUSB診断版ではCornix接続後・Nape scan開始前に、保存済みbondと接続中LE peerのアドレスを一度だけ表示する。両方のCornixアドレスと照合し、残りが古い相手かNapeの過去ペアリングかを見分ける。アドレスログは診断版だけで有効化する。
 
+bond内訳診断版は [Actions run 35928386017](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35928386017) の全14 jobで成功。UF2は `firmware/nape-bond-inventory-35928386017/cornix_prospector_nape_bridge_usb_log_nosd.uf2`、SHA256 `7379CF989EAD224F2A251BD1CA14EBA4A0FD5886E37B715615786334A8870499`。実際の設定は `CONFIG_BT_MAX_PAIRED=8` と `CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS=y`、RAMは `243592 / 262144` バイト。通常のProspector版とCornix左右UF2のSHA256は直前runと一致する。診断ログにはBLEアドレスが含まれるため、ローカルで読み取ってCornix接続先と照合し、不要なaddress情報は引き継ぎ文書へ保存しない。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
