@@ -119,6 +119,10 @@ USBログ版はCIでビルドと設定（`CONFIG_ZMK_USB_LOGGING=y`、`CONFIG_LO
 
 そのため次の診断版では、Napeの全primary GATT serviceを一度列挙してUUIDとhandle範囲を記録する。0x1812（HID Service）があれば後続のReport Map探索を続ける。再接続時のsecurity要求が失敗した場合は、その時点のbond数もログへ出し、接続を切ってbackoffへ戻す。Cornix側のbondは消去しない。
 
+この診断版は [Actions run 35896479036](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35896479036) の全14 jobでビルド成功。書き込み対象は `firmware/nape-gatt-services-35896479036/cornix_prospector_nape_bridge_usb_log_nosd.uf2`（SHA256 `47912C54F53EB21D8A40739077D60A885F9F6CE393A455E354DBD0E7488163E4`）。**Prospectorだけ**へ手動で書く。Cornix左右のUF2は前回の診断runとSHA256が一致し、再書き込みは不要。リンク時RAMは `243336 / 262144` バイト。現時点では新しい診断版の実機GATT一覧は未取得。
+
+書き込み後はCOM20などのUSBログポートを開いてからNapeをペアリング点滅させ、`NAPE: GATT service 0x....`、`NAPE: HID service found` または `NAPE: GATT discovery ended without HID service`、`NAPE: security request failed ... bonds N/7` を記録する。ポート番号は再列挙で変わる場合がある。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
