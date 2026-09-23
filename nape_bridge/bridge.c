@@ -73,6 +73,7 @@ struct bridge_state {
 
 static struct bridge_state bridge;
 static atomic_t gatt_pending;
+static bool waiting_for_split;
 K_MUTEX_DEFINE(nape_scan_lock);
 K_MUTEX_DEFINE(nape_state_lock);
 
@@ -150,10 +151,15 @@ static void scan_work_handler(struct k_work *work) {
         return;
     }
     if (!zmk_split_ble_peripherals_ready()) {
+        if (!waiting_for_split) {
+            LOG_INF("NAPE: waiting for Cornix split discovery");
+            waiting_for_split = true;
+        }
         k_mutex_unlock(&nape_scan_lock);
         k_work_reschedule(&nape_scan_work, K_SECONDS(1));
         return;
     }
+    waiting_for_split = false;
     int err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
     if (!err) {
         atomic_set(&bridge.scanning, 1);
@@ -162,7 +168,10 @@ static void scan_work_handler(struct k_work *work) {
         k_work_reschedule(&nape_scan_timeout_work, K_SECONDS(10));
     }
     k_mutex_unlock(&nape_scan_lock);
-    if (err) schedule_scan_backoff();
+    if (err) {
+        LOG_WRN("NAPE: scan start failed (%d)", err);
+        schedule_scan_backoff();
+    }
 }
 
 static void scan_timeout_handler(struct k_work *work) {
@@ -646,7 +655,11 @@ static void input_work_handler(struct k_work *work) {
 
 static int nape_init(void) {
     int err = zmk_split_ble_register_external_scan_stop(stop_own_scan);
-    if (err) return err;
+    if (err) {
+        LOG_ERR("NAPE: scan arbitration registration failed (%d)", err);
+        return err;
+    }
+    LOG_INF("NAPE: bridge initialized");
     k_work_reschedule(&nape_scan_work, K_SECONDS(1));
     return 0;
 }
