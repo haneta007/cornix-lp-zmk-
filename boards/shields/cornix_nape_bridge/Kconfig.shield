@@ -1,0 +1,2 @@
+config SHIELD_CORNIX_NAPE_BRIDGE
+    def_bool $(shields_list_contains,cornix_nape_bridge)

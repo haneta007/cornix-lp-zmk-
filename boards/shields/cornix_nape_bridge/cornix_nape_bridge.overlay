@@ -1,0 +1,24 @@
+#include <input/processors.dtsi>
+
+/ {
+    nape_motion: nape_motion {
+        compatible = "nape,virtual-pointer";
+        status = "okay";
+    };
+
+    nape_controls: nape_controls {
+        compatible = "nape,virtual-pointer";
+        status = "okay";
+    };
+
+    nape_motion_listener {
+        compatible = "zmk,input-listener";
+        device = <&nape_motion>;
+        input-processors = <&zip_temp_layer 10 700>;
+    };
+
+    nape_controls_listener {
+        compatible = "zmk,input-listener";
+        device = <&nape_controls>;
+    };
+};

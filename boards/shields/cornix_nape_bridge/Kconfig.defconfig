@@ -1,0 +1,6 @@
+if SHIELD_CORNIX_NAPE_BRIDGE
+
+config ZMK_NAPE_BRIDGE
+    default y
+
+endif

@@ -1,0 +1,21 @@
+name: Nape HID parser
+on:
+  push:
+    paths:
+      - "nape_bridge/hid_mouse.*"
+      - "nape_bridge/tests/**"
+      - ".github/workflows/nape-parser.yml"
+  pull_request:
+    paths:
+      - "nape_bridge/hid_mouse.*"
+      - "nape_bridge/tests/**"
+      - ".github/workflows/nape-parser.yml"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run parser tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/hid_mouse.c nape_bridge/tests/hid_mouse_test.c -o /tmp/nape-hid-test
+          /tmp/nape-hid-test

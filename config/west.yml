@@ -14,14 +14,14 @@ manifest:
       url-base: https://github.com/haneta007
   projects:
     - name: zmk
-      remote: zmkfirmware
-      revision: main
+      remote: haneta007
+      revision: 7dd229cc2dd69f4d71490134dabcbc0d12cd9101
       clone-depth: 1
       import:
         file: app/west.yml
     - name: zmk-helpers
       remote: urob
-      revision: main
+      revision: 7bcba18fc8df27303eb92a435d33ea870cc51f98
       clone-depth: 1
     #- name: zmk-rgbled-widget
     #  remote: hitsmaxft
@@ -29,12 +29,12 @@ manifest:
     #  clone-depth: 1
     - name: zmk-dongle-display
       remote: englmaxi
-      revision: main
+      revision: 2bb333f87136d33e94a49d86236ed9ec254a8060
       clone-depth: 1
     - name: prospector-zmk-module
       remote: haneta007
       repo-path: prospector---Zmk-module
-      revision: feat/new-status-screens
+      revision: 28438c476e2e17d648ce25a14d85525997cc48e3
       path: modules/prospector-zmk-module
     #- name: zmk-dongle-screen
     #  remote: janpfischer

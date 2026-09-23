@@ -21,6 +21,12 @@ include:
     artifact-name: cornix_prospector_dongle_nosd
 
   - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: studio-rpc-usb-uart nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap
+    artifact-name: cornix_prospector_nape_bridge_nosd
+
+  - board: xiao_ble//zmk
     shield: settings_reset
     snippet: nrf52840-nosd
     artifact-name: reset_prospector_xiao_ble_nosd

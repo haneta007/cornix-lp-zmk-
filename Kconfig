@@ -1,0 +1,14 @@
+config ZMK_NAPE_BRIDGE
+    bool "Nape BLE HID to USB mouse bridge"
+    depends on BT && BT_CENTRAL && BT_GATT_CLIENT && ZMK_POINTING && ZMK_SPLIT_ROLE_CENTRAL
+    default y if SHIELD_CORNIX_NAPE_BRIDGE
+
+config ZMK_NAPE_NAME
+    string "BLE HID device name to pair"
+    default "Nape Pro"
+    depends on ZMK_NAPE_BRIDGE
+
+config ZMK_NAPE_DEBUG
+    bool "Verbose Nape HID and BLE logging"
+    default n
+    depends on ZMK_NAPE_BRIDGE
