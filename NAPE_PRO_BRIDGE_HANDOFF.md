@@ -133,6 +133,8 @@ bond内訳診断版は [Actions run 35928386017](https://github.com/haneta007/co
 
 2026-09-25の実機でbond一覧を採取。保存bondは7件、起動時の接続中LE peerは2件。接続中2アドレスは保存bondのindex 5と6に完全一致し、Cornix左右のbondと特定できた。残るindex 0〜4の5件はその時点で未接続。index 1は以前のログにあるNape接続先アドレスと完全一致。index 2は別ログにあるNape candidate群とアドレスprefixが一致し、index 4はindex 1とprefixが一致するためNapeのアドレス変化による古いbondの可能性が高い。index 0と3の相手はログから特定できず、他の古いpeerかどうかは未確定。`CONFIG_ZMK_BLE_CLEAR_BONDS_ON_START=n` のため、切断や通常再起動ではこれらのbondは消えない。既存bondの削除は行っていない。
 
+同じ診断ログの再起動前に、既知Nape bondと一致するアドレスで接続し `security established (level 2)` まで成功。その後primary GATT列挙は約4秒で `GATT discovery ended without HID service (0 services)` となり、接続timeout reason `0x08` で切断した。診断実装はZephyr GATT callbackの終端をサービス0件として数えたが、固定済みZephyrはATT discovery error時にも同じNULL終端callbackを呼ぶため、Napeにサービスが存在しないと断定できない。bond枠の不足は新規アドレスでのペアリングを妨げていたが、既存bondで接続できた場合にもGATT discovery問題が別途残る。
+
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
