@@ -148,6 +148,8 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 
 このbond cleanupはProspectorに保存されたNape候補だけに作用する。Windows側のBluetooth登録、Nape本体のfirmwareや設定、Cornix左右のbondには作用しない。bond枠を空けても、前回確認されたGATT service discoveryの問題が解決したことにはならないため、cleanup後のログで別途確認する。
 
+2026-09-26の[Actions run 36182378734](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36182378734)で全13 build jobとartifact mergeが成功した。runの `firmware` artifact（3,328,324 bytes）にcleanup版を含むUF2一式がある。artifact archiveのSHA256は `C4772D7952C12FCE23D9B4B6B90E1A4B0E5CAD26D510ACCAFA8FE3F1E5A7AA94`。これはZIP archiveのhashで、個別UF2のhashではない。GitHub Actionsから `firmware` をダウンロードして展開し、`cornix_prospector_nape_bond_cleanup_nosd.uf2` だけをProspectorへ手動で書く。実機へは未flashで、個別UF2のhashは未確認。
+
 同じ診断ログの再起動前に、既知Nape bondと一致するアドレスで接続し `security established (level 2)` まで成功。その後primary GATT列挙は約4秒で `GATT discovery ended without HID service (0 services)` となり、接続timeout reason `0x08` で切断した。診断実装はZephyr GATT callbackの終端をサービス0件として数えたが、固定済みZephyrはATT discovery error時にも同じNULL終端callbackを呼ぶため、Napeにサービスが存在しないと断定できない。bond枠の不足は新規アドレスでのペアリングを妨げていたが、既存bondで接続できた場合にもGATT discovery問題が別途残る。
 
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
