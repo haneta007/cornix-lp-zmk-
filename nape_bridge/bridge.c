@@ -2,6 +2,7 @@
 #define DT_DRV_COMPAT nape_virtual_pointer
 
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -78,6 +79,9 @@ static atomic_t gatt_pending;
 static bool waiting_for_split;
 #if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
 static atomic_t bond_inventory_logged;
+#endif
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_CLEANUP_ONLY)
+static atomic_t bond_cleanup_started;
 #endif
 K_MUTEX_DEFINE(nape_scan_lock);
 K_MUTEX_DEFINE(nape_state_lock);
@@ -180,6 +184,141 @@ static void log_bond_inventory(void) {
 }
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_CLEANUP_ONLY)
+#define NAPE_CLEANUP_BOND_TARGETS 3
+
+/* FNV-1a fingerprints of the three Nape bond addresses found in the local
+ * inventory capture. Keeping fingerprints here avoids publishing BLE MACs. */
+static const uint64_t nape_cleanup_fingerprints[NAPE_CLEANUP_BOND_TARGETS] = {
+    0x2e2d055e6f8cd73dULL,
+    0xad902443e2ce384bULL,
+    0xa8c670013f0ebdb6ULL,
+};
+
+struct bond_snapshot {
+    bt_addr_le_t addresses[CONFIG_BT_MAX_PAIRED];
+    uint8_t count;
+    bool overflow;
+};
+
+struct peer_snapshot {
+    bt_addr_le_t addresses[CONFIG_BT_MAX_CONN];
+    uint8_t count;
+    bool overflow;
+};
+
+static uint64_t nape_address_fingerprint(const bt_addr_le_t *addr) {
+    uint64_t hash = 0xcbf29ce484222325ULL;
+    hash = (hash ^ addr->type) * 0x100000001b3ULL;
+    for (size_t i = 0; i < sizeof(addr->a.val); i++) {
+        hash = (hash ^ addr->a.val[i]) * 0x100000001b3ULL;
+    }
+    return hash;
+}
+
+static int nape_cleanup_fingerprint_index(uint64_t fingerprint) {
+    for (int i = 0; i < NAPE_CLEANUP_BOND_TARGETS; i++) {
+        if (fingerprint == nape_cleanup_fingerprints[i]) return i;
+    }
+    return -1;
+}
+
+static void capture_stored_bond(const struct bt_bond_info *info, void *user_data) {
+    struct bond_snapshot *snapshot = user_data;
+    if (snapshot->count >= ARRAY_SIZE(snapshot->addresses)) {
+        snapshot->overflow = true;
+        return;
+    }
+    bt_addr_le_copy(&snapshot->addresses[snapshot->count++], &info->addr);
+}
+
+static void capture_active_peer(struct bt_conn *conn, void *user_data) {
+    struct peer_snapshot *snapshot = user_data;
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) || info.type != BT_CONN_TYPE_LE ||
+        info.state != BT_CONN_STATE_CONNECTED || !info.le.dst) {
+        return;
+    }
+    if (snapshot->count >= ARRAY_SIZE(snapshot->addresses)) {
+        snapshot->overflow = true;
+        return;
+    }
+    bt_addr_le_copy(&snapshot->addresses[snapshot->count++], info.le.dst);
+}
+
+static bool snapshot_has_address(const struct bond_snapshot *snapshot,
+                                 const bt_addr_le_t *address) {
+    for (uint8_t i = 0; i < snapshot->count; i++) {
+        if (bt_addr_le_cmp(&snapshot->addresses[i], address) == 0) return true;
+    }
+    return false;
+}
+
+static bool snapshot_has_active_peer(const struct peer_snapshot *snapshot,
+                                     const bt_addr_le_t *address) {
+    for (uint8_t i = 0; i < snapshot->count; i++) {
+        if (bt_addr_le_cmp(&snapshot->addresses[i], address) == 0) return true;
+    }
+    return false;
+}
+
+static uint8_t count_stored_bonds(void) {
+    struct bond_snapshot snapshot = {0};
+    bt_foreach_bond(BT_ID_DEFAULT, capture_stored_bond, &snapshot);
+    return snapshot.count;
+}
+
+static void cleanup_nape_bonds(void) {
+    struct bond_snapshot bonds = {0};
+    struct peer_snapshot peers = {0};
+    bool targets_seen[NAPE_CLEANUP_BOND_TARGETS] = {false};
+    uint8_t removed = 0;
+    uint8_t failed = 0;
+
+    bt_foreach_bond(BT_ID_DEFAULT, capture_stored_bond, &bonds);
+    bt_conn_foreach(BT_CONN_TYPE_LE, capture_active_peer, &peers);
+
+    /* Require both Cornix links, their corresponding stored keys, room for
+     * both known unclassified bonds, and no duplicate target fingerprints. */
+    bool safe = !bonds.overflow && bonds.count >= 4 &&
+                bonds.count <= CONFIG_BT_MAX_PAIRED && !peers.overflow && peers.count == 2;
+    for (uint8_t i = 0; safe && i < peers.count; i++) {
+        if (!snapshot_has_address(&bonds, &peers.addresses[i])) safe = false;
+    }
+    for (uint8_t i = 0; safe && i < bonds.count; i++) {
+        int target = nape_cleanup_fingerprint_index(
+            nape_address_fingerprint(&bonds.addresses[i]));
+        if (target < 0) continue;
+        if (targets_seen[target] || snapshot_has_active_peer(&peers, &bonds.addresses[i])) {
+            safe = false;
+            break;
+        }
+        targets_seen[target] = true;
+    }
+    if (!safe) {
+        LOG_ERR("NAPE: bond cleanup aborted; inventory guard failed (stored=%u active LE=%u)",
+                bonds.count, peers.count);
+        return;
+    }
+
+    for (uint8_t i = 0; i < bonds.count; i++) {
+        int target = nape_cleanup_fingerprint_index(nape_address_fingerprint(&bonds.addresses[i]));
+        if (target < 0) continue;
+        int err = bt_unpair(BT_ID_DEFAULT, &bonds.addresses[i]);
+        if (!err) {
+            removed++;
+            LOG_INF("NAPE: removed saved Nape bond candidate %u", target + 1);
+        } else {
+            failed++;
+            LOG_ERR("NAPE: failed to remove saved Nape bond candidate %u (%d)", target + 1, err);
+        }
+    }
+
+    LOG_INF("NAPE: bond cleanup complete removed=%u failed=%u remaining=%u active LE=%u",
+            removed, failed, count_stored_bonds(), peers.count);
+}
+#endif
+
 static void scan_work_handler(struct k_work *work) {
     k_mutex_lock(&nape_scan_lock, K_FOREVER);
     if (has_connection() || atomic_get(&bridge.connecting) || atomic_get(&bridge.scanning)) {
@@ -196,6 +335,11 @@ static void scan_work_handler(struct k_work *work) {
         return;
     }
     waiting_for_split = false;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_CLEANUP_ONLY)
+    k_mutex_unlock(&nape_scan_lock);
+    if (atomic_cas(&bond_cleanup_started, 0, 1)) cleanup_nape_bonds();
+    return;
+#else
 #if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
     if (atomic_cas(&bond_inventory_logged, 0, 1)) log_bond_inventory();
 #endif
@@ -211,6 +355,7 @@ static void scan_work_handler(struct k_work *work) {
         LOG_WRN("NAPE: scan start failed (%d)", err);
         schedule_scan_backoff();
     }
+#endif
 }
 
 static void scan_timeout_handler(struct k_work *work) {

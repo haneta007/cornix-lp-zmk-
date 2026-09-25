@@ -133,6 +133,21 @@ bond内訳診断版は [Actions run 35928386017](https://github.com/haneta007/co
 
 2026-09-25の実機でbond一覧を採取。保存bondは7件、起動時の接続中LE peerは2件。接続中2アドレスは保存bondのindex 5と6に完全一致し、Cornix左右のbondと特定できた。残るindex 0〜4の5件はその時点で未接続。index 1は以前のログにあるNape接続先アドレスと完全一致。index 2は別ログにあるNape candidate群とアドレスprefixが一致し、index 4はindex 1とprefixが一致するためNapeのアドレス変化による古いbondの可能性が高い。index 0と3の相手はログから特定できず、他の古いpeerかどうかは未確定。`CONFIG_ZMK_BLE_CLEAR_BONDS_ON_START=n` のため、切断や通常再起動ではこれらのbondは消えない。既存bondの削除は行っていない。
 
+#### Nape候補bondだけを削除する一回限りの手順
+
+2026-09-25のinventory logと、過去のNape接続ログを照合した結果、index 1はNapeの保存bondと一致し、index 2と4はNapeのアドレス変化候補と判断した。相手を特定できないindex 0と3、およびCornix左右のbondは削除対象にしない。
+
+この3件だけを対象にする `cornix_prospector_nape_bond_cleanup_nosd` artifactを追加した。cleanup-only版はCornix左右のsplit ready後に、保存bond数が4〜8、接続中LE peerがCornix左右の2件、対象fingerprintが重複せずactive peerではないことを確認してから個別に `bt_unpair()` を呼ぶ。条件が一致しなければ何も削除しない。MAC addressそのものはコード・ログへ出さない。削除処理後にNape scanを開始しないため、このUF2を入れたままではNapeと再pairingしない。
+
+Actionsでこのartifactのbuildが成功した後、次の順に手動で行う。実機への自動flashは行わない。
+
+1. Cleanup UF2をProspectorだけに書く。Cornix左右は変更しない。
+2. USB CDCログを開いた状態でCornix左右を接続し、`NAPE: bond cleanup complete removed=3 failed=0 remaining=4 active LE=2` を確認する。条件がずれている場合は `bond cleanup aborted` が出てbondは削除されない。
+3. Cleanup UF2の役目はここまで。Napeの再接続診断には、既存の `cornix_prospector_nape_bridge_usb_log_nosd.uf2` をProspectorへ手動で戻す。この診断UF2はbond inventoryにraw addressを記録するので、ログはローカルで扱い未加工のまま共有しない。
+4. NapeをBTモードの未使用チャンネルでFn+1を約4秒押してpairing点滅させ、ログの `candidate found`、`connected`、`security established`、GATT service列挙のどこまで進むかを記録する。
+
+このbond cleanupはProspectorに保存されたNape候補だけに作用する。Windows側のBluetooth登録、Nape本体のfirmwareや設定、Cornix左右のbondには作用しない。bond枠を空けても、前回確認されたGATT service discoveryの問題が解決したことにはならないため、cleanup後のログで別途確認する。
+
 同じ診断ログの再起動前に、既知Nape bondと一致するアドレスで接続し `security established (level 2)` まで成功。その後primary GATT列挙は約4秒で `GATT discovery ended without HID service (0 services)` となり、接続timeout reason `0x08` で切断した。診断実装はZephyr GATT callbackの終端をサービス0件として数えたが、固定済みZephyrはATT discovery error時にも同じNULL終端callbackを呼ぶため、Napeにサービスが存在しないと断定できない。bond枠の不足は新規アドレスでのペアリングを妨げていたが、既存bondで接続できた場合にもGATT discovery問題が別途残る。
 
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。

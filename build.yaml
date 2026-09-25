@@ -40,6 +40,14 @@ include:
     cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_usb_logging.conf
     artifact-name: cornix_prospector_nape_bridge_usb_log_nosd
 
+  # One-shot cleanup image: after both Cornix splits are ready, remove only
+  # the three fingerprint-matched Nape bonds and never start Nape scanning.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: zmk-usb-logging nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_bond_cleanup_usb.conf
+    artifact-name: cornix_prospector_nape_bond_cleanup_nosd
+
   # Diagnostic variant for the known split GATT discovery race with battery
   # fetching enabled. This leaves the existing and normal bridge artifacts intact.
   - board: xiao_ble//zmk

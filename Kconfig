@@ -20,3 +20,8 @@ config ZMK_NAPE_BOND_DIAGNOSTICS
     bool "Log stored Bluetooth bonds for Nape diagnostics"
     default n
     depends on ZMK_NAPE_BRIDGE
+
+config ZMK_NAPE_BOND_CLEANUP_ONLY
+    bool "Remove only the previously identified Nape bonds and stop"
+    default n
+    depends on ZMK_NAPE_BRIDGE
