@@ -146,11 +146,17 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 3. Cleanup UF2の役目はここまで。Napeの再接続診断には、既存の `cornix_prospector_nape_bridge_usb_log_nosd.uf2` をProspectorへ手動で戻す。この診断UF2はbond inventoryにraw addressを記録するので、ログはローカルで扱い未加工のまま共有しない。
 4. NapeをBTモードの未使用チャンネルでFn+1を約4秒押してpairing点滅させ、ログの `candidate found`、`connected`、`security established`、GATT service列挙のどこまで進むかを記録する。
 
-このbond cleanupはProspectorに保存されたNape候補だけに作用する。Windows側のBluetooth登録、Nape本体のfirmwareや設定、Cornix左右のbondには作用しない。bond枠を空けても、前回確認されたGATT service discoveryの問題が解決したことにはならないため、cleanup後のログで別途確認する。
+このbond cleanupはProspectorに保存されたNape候補だけに作用する。Windows側のBluetooth登録、Nape本体のfirmwareや設定、Cornix左右のbondには作用しない。bond枠の解放だけではHID接続を検証できない。後述の実機動作確認では、別途Nape入力のUSB転送とlayer切り替えが確認された。
 
-2026-09-26の[Actions run 36182378734](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36182378734)で全13 build jobとartifact mergeが成功した。runの `firmware` artifact（3,328,324 bytes）にcleanup版を含むUF2一式がある。artifact archiveのSHA256は `C4772D7952C12FCE23D9B4B6B90E1A4B0E5CAD26D510ACCAFA8FE3F1E5A7AA94`。これはZIP archiveのhashで、個別UF2のhashではない。GitHub Actionsから `firmware` をダウンロードして展開し、`cornix_prospector_nape_bond_cleanup_nosd.uf2` だけをProspectorへ手動で書く。実機へは未flashで、個別UF2のhashは未確認。
+2026-09-26の[Actions run 36182378734](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36182378734)で全13 build jobとartifact mergeが成功した。runの `firmware` artifact（3,328,324 bytes）にcleanup版を含むUF2一式がある。artifact archiveのSHA256は `C4772D7952C12FCE23D9B4B6B90E1A4B0E5CAD26D510ACCAFA8FE3F1E5A7AA94`。これはZIP archiveのhashで、個別UF2のhashではない。GitHub Actionsから `firmware` をダウンロードして展開し、`cornix_prospector_nape_bond_cleanup_nosd.uf2` だけをProspectorへ手動で書く。個別UF2のhashと、後述の実機テストに使ったUF2名は未確認。
 
 同じ診断ログの再起動前に、既知Nape bondと一致するアドレスで接続し `security established (level 2)` まで成功。その後primary GATT列挙は約4秒で `GATT discovery ended without HID service (0 services)` となり、接続timeout reason `0x08` で切断した。診断実装はZephyr GATT callbackの終端をサービス0件として数えたが、固定済みZephyrはATT discovery error時にも同じNULL終端callbackを呼ぶため、Napeにサービスが存在しないと断定できない。bond枠の不足は新規アドレスでのペアリングを妨げていたが、既存bondで接続できた場合にもGATT discovery問題が別途残る。
+
+### 2026-09-26の実機動作確認
+
+ユーザーから、Nape ProがProspectorに接続し、ボール操作でPCのポインタが動くこと、`NAPE_MOUSE` layerへ切り替わって約700ms後に戻ること、wheelと各mouse buttonが反応することを確認したとの報告があった。これにより実機でのBLE入力からUSB mouse HID、Auto Mouse Layerまでの動作が確認できた。前項のGATT discovery失敗は後の動作確認で実用上解消している。
+
+確認に使用した正確なUF2名、bond cleanupログ、Nape Report Mapのraw dumpは記録されていない。従って個々のbond削除結果とdescriptorの内容は未確認のまま。実機動作結果はユーザーによる直接確認報告であり、CIだけから推定したものではない。
 
 - `scan start` が出ない：Cornix左右のsplit接続とGATTサービス検出を先に確認する。
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
@@ -165,6 +171,6 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - タイムアウトは `boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay` の `<&zip_temp_layer 10 700>` の `700` を変更する。移動時だけ更新する構造はそのまま。
 - `NAPE_MOUSE`は現時点で全キーtransparent。クリックはNape本体のボタンから送る。キー割当を追加する場合は `config/cornix_nape_bridge.keymap` の1レイヤーにまとめる。
 - parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
-- Nape実機のReport Mapが未入手なので、デバッグ版で最初に生descriptorと通知を確認する。未知のReportは通常版でUSBへ転送しない。
+- Nape実機のReport Map raw dumpは保存されていない。ユーザー実機でX/Y・wheel・button転送は動作確認済みだが、descriptorの内容や他機種への汎用性は未確認。未知のReportは通常版でUSBへ転送しない。
 - 最終CIのリンク時RAMは通常版 `256770 / 262144` バイト（97.95%、残り5374バイト）、デバッグ版 `259714 / 262144` バイト（99.07%、残り2430バイト）。旧Prospectorのベースラインは `252730 / 262144` バイト（96.41%）。これは静的配置と設定済みスタックの値であり、BLE 3接続時の実際のスタック余裕や連続稼働は未測定。特にデバッグ版は余裕が小さいため短時間のRTT調査用とし、通常運用は通常版を使う。
 - Bluetooth認証方式とレポート内容はNape本体の実機・ファーム版に依存する。実機で不適合が判明した場合は、HEX dumpを根拠に小型parserへ限定的に対応を追加する。
