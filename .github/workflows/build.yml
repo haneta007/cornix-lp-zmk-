@@ -33,7 +33,9 @@ jobs:
       config_path: config
 
   build-baseline:
-    needs: validate-baseline
+    # The reusable workflow merge job consumes the shared artifact-* pattern.
+    # Run it after the main matrix has merged its artifacts to avoid a race.
+    needs: [validate-baseline, build]
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
     with:
       build_matrix_path: build-baseline.yaml
