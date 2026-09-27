@@ -181,5 +181,8 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 ## 2026-09-27 保守差分の確認状況
 
 - レイヤーindex検証はローカルで成功（`NAPE_MOUSE` index 10、timeout 700 ms）。workflowとmanifest 5ファイルのYAML parseも成功。
-- C parser/queue sanitizer testとfirmware compile/linkは、このWindows環境にC toolchain / west / Zephyr SDKがなく未実行。`.github/workflows/nape-parser.yml` にoverflow・disconnect release testを追加し、firmware workflowでCornix regression buildも行う設定にした。変更後のRAM値、UF2 hash、Actions成功はCI実行後に記録する。
+- [Nape HID parser run 36298536850](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36298536850) が成功。C11 `-Wall -Wextra -Werror` + ASan/UBSanでparserとqueue overflow/disconnect release testを実行し、layer index検証も通過。
+- [Build ZMK firmware run 36298882703](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36298882703) が成功。通常matrixの12 build（Nape Prospector variants、Cornix Left/Right等）とbaseline Prospector build 1件、両archive mergeが成功した。
+- runの `firmware` archiveは2.82 MB、GitHub表示のarchive SHA256は `197bb6e50bc715dcce636090cc59a1c1f07450a4ef6df0193074253afe757e6a`。Nape対応UF2はこのarchiveから取得する。`firmware-baseline-dev` archiveは369 KB、archive SHA256は `602bc626842b013a6787088ba2ea68d29311d43b4d6b5b58ff8e543c4884d6a5`。これらはZIP archiveのdigestで、個々のUF2 hashではない。
+- このWindows環境にC toolchain / west / Zephyr SDKがないためローカルcompile/linkは未実行。Actionsはbuild成功したが、ログへの匿名アクセスが使えず、新しいリンク時RAM値と個別UF2のSHA256は未採取。目標の95%未満になったかは未確認。
 - 切断処理はbutton releaseを通知キューに記録するよう補強した。切断workが新しいBLE接続後に実行された場合でも、古いheld-button状態を新接続へ持ち越さない。
