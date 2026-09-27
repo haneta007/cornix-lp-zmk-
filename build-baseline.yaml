@@ -1,0 +1,8 @@
+---
+include:
+  # Original dev firmware rebuilt against the dependency SHAs resolved by
+  # Actions run 35829390895. Kept in its own artifact archive.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter
+    snippet: studio-rpc-usb-uart nrf52840-nosd
+    artifact-name: cornix_prospector_dongle_nosd

@@ -6,10 +6,36 @@ on:
       - ".github/workflows/build.yml"
       - "boards/**"
       - "config/**"
+      - "config-baseline/**"
+      - "build-baseline.yaml"
       - "build.yaml"
+      - "nape_bridge/**"
+      - "Kconfig"
+      - "CMakeLists.txt"
+      - "zephyr/module.yml"
+      - "dts/**"
     tags-ignore:
       - "*"
 
 jobs:
+  validate-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep rollback keymap pinned to dev baseline
+        run: cmp config/cornix.keymap config-baseline/cornix.keymap
+
   build:
+    needs: validate-baseline
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
+    with:
+      build_matrix_path: build.yaml
+      config_path: config
+
+  build-baseline:
+    needs: validate-baseline
+    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
+    with:
+      build_matrix_path: build-baseline.yaml
+      config_path: config-baseline
+      archive_name: firmware-baseline-dev

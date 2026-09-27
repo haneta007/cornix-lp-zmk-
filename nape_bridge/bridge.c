@@ -19,17 +19,18 @@
 #include <zmk/split/bluetooth/central_scan.h>
 
 #include "hid_mouse.h"
+#include "input_queue.h"
 
 #if IS_ENABLED(CONFIG_ZMK_NAPE_DEBUG)
 LOG_MODULE_REGISTER(nape, LOG_LEVEL_DBG);
-#else
+#elif IS_ENABLED(CONFIG_ZMK_USB_LOGGING) || IS_ENABLED(CONFIG_ZMK_RTT_LOGGING)
 LOG_MODULE_REGISTER(nape, LOG_LEVEL_INF);
+#else
+LOG_MODULE_REGISTER(nape, LOG_LEVEL_WRN);
 #endif
 
 #define NAPE_MAX_GATT_REPORTS 8
 #define NAPE_REPORT_MAP_SIZE 512
-#define NAPE_MAX_NOTIFICATION 64
-#define NAPE_INPUT_QUEUE_SIZE 8
 
 static int virtual_pointer_init(const struct device *dev) { return 0; }
 #define NAPE_POINTER_DEVICE(inst)                                                                  \
@@ -76,6 +77,7 @@ struct bridge_state {
 
 static struct bridge_state bridge;
 static atomic_t gatt_pending;
+static atomic_t retry_disconnect_pending;
 static bool waiting_for_split;
 #if IS_ENABLED(CONFIG_ZMK_NAPE_BOND_DIAGNOSTICS)
 static atomic_t bond_inventory_logged;
@@ -85,20 +87,17 @@ static atomic_t bond_cleanup_started;
 #endif
 K_MUTEX_DEFINE(nape_scan_lock);
 K_MUTEX_DEFINE(nape_state_lock);
-
-struct queued_input {
-    uint32_t generation;
-    uint8_t report_id;
-    uint8_t length;
-    uint8_t payload[NAPE_MAX_NOTIFICATION];
-};
-K_MSGQ_DEFINE(nape_input_queue, sizeof(struct queued_input), NAPE_INPUT_QUEUE_SIZE, 4);
+static struct nape_input_queue nape_input_queue;
+static struct k_spinlock nape_input_queue_lock;
+static uint32_t retry_disconnect_generation;
 
 static void scan_work_handler(struct k_work *work);
 static void scan_timeout_handler(struct k_work *work);
 static void candidate_work_handler(struct k_work *work);
 static void discovery_work_handler(struct k_work *work);
 static void input_work_handler(struct k_work *work);
+static void retry_disconnect_work_handler(struct k_work *work);
+static void request_retry_disconnect(struct bt_conn *conn, const char *reason);
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                          struct net_buf_simple *ad);
 K_WORK_DELAYABLE_DEFINE(nape_scan_work, scan_work_handler);
@@ -106,6 +105,7 @@ K_WORK_DELAYABLE_DEFINE(nape_scan_timeout_work, scan_timeout_handler);
 K_WORK_DEFINE(nape_candidate_work, candidate_work_handler);
 K_WORK_DEFINE(nape_discovery_work, discovery_work_handler);
 K_WORK_DEFINE(nape_input_work, input_work_handler);
+K_WORK_DELAYABLE_DEFINE(nape_retry_disconnect_work, retry_disconnect_work_handler);
 
 static int stop_own_scan(void) {
     /* Called by the split central from Bluetooth callbacks. Never wait for a
@@ -144,6 +144,40 @@ static void schedule_scan_backoff(void) {
     if (bridge.backoff_step < 5) bridge.backoff_step++;
     LOG_INF("NAPE: reconnect scheduled in %u ms", delay);
     k_work_reschedule(&nape_scan_work, K_MSEC(delay));
+}
+
+static void request_retry_disconnect(struct bt_conn *conn, const char *reason) {
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
+    bool schedule = conn && conn == bridge.conn &&
+                    atomic_cas(&retry_disconnect_pending, 0, 1);
+    if (schedule) retry_disconnect_generation = bridge.generation;
+    k_mutex_unlock(&nape_state_lock);
+    if (!schedule) return;
+
+    LOG_ERR("NAPE: %s; disconnecting before retry", reason);
+    k_work_reschedule(&nape_retry_disconnect_work, K_NO_WAIT);
+}
+
+static void retry_disconnect_work_handler(struct k_work *work) {
+    struct bt_conn *conn = NULL;
+    k_mutex_lock(&nape_state_lock, K_FOREVER);
+    if (bridge.conn && bridge.generation == retry_disconnect_generation) {
+        conn = bt_conn_ref(bridge.conn);
+    } else {
+        atomic_clear(&retry_disconnect_pending);
+    }
+    k_mutex_unlock(&nape_state_lock);
+
+    if (!conn) {
+        return;
+    }
+
+    int err = bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    bt_conn_unref(conn);
+    if (err && err != -EALREADY) {
+        LOG_WRN("NAPE: retry disconnect request failed (%d)", err);
+        k_work_reschedule(&nape_retry_disconnect_work, K_SECONDS(2));
+    }
 }
 
 static bool has_connection(void) {
@@ -471,18 +505,19 @@ static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_para
     k_mutex_unlock(&nape_state_lock);
     if (!active) return BT_GATT_ITER_CONTINUE;
     struct gatt_report *report = CONTAINER_OF(params, struct gatt_report, subscription);
-    if (length > NAPE_MAX_NOTIFICATION) {
+    if (length > NAPE_INPUT_MAX_NOTIFICATION) {
         LOG_WRN("NAPE: oversized input report %u", length);
         return BT_GATT_ITER_CONTINUE;
     }
-    struct queued_input queued = {.generation = generation, .report_id = report->id,
-                                  .length = (uint8_t)length};
+    struct nape_queued_input queued = {.generation = generation, .report_id = report->id,
+                                       .length = (uint8_t)length};
     memcpy(queued.payload, data, length);
-    if (k_msgq_put(&nape_input_queue, &queued, K_NO_WAIT)) {
-        LOG_WRN("NAPE: input queue full");
-    } else {
-        k_work_submit(&nape_input_work);
-    }
+    k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+    bool overflowed = nape_input_queue_push(&nape_input_queue, &queued);
+    uint32_t overflow_count = nape_input_queue.overflow_count;
+    k_spin_unlock(&nape_input_queue_lock, key);
+    if (overflowed) LOG_WRN("NAPE: input queue overflow count=%u", overflow_count);
+    k_work_submit(&nape_input_work);
     return BT_GATT_ITER_CONTINUE;
 }
 
@@ -664,6 +699,7 @@ static uint8_t service_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
         atomic_clear(&gatt_pending);
         LOG_ERR("NAPE: GATT discovery ended without HID service (%u services)",
                 bridge.service_count);
+        request_retry_disconnect(conn, "HID service missing after GATT discovery");
         return BT_GATT_ITER_STOP;
     }
     if (!attr->user_data) {
@@ -742,6 +778,7 @@ static void discovery_work_handler(struct k_work *work) {
     if (err) {
         atomic_clear(&gatt_pending);
         LOG_ERR("NAPE: discovery start failed (%d)", err);
+        request_retry_disconnect(conn, "GATT discovery start failed");
     }
     bt_conn_unref(conn);
 }
@@ -755,6 +792,8 @@ static void count_bond(const struct bt_bond_info *info, void *user_data) {
 static void connected(struct bt_conn *conn, uint8_t err) {
     if (!accept_pending_conn(conn)) return;
     atomic_clear(&bridge.connecting);
+    k_work_cancel_delayable(&nape_retry_disconnect_work);
+    atomic_clear(&retry_disconnect_pending);
     if (err) {
         LOG_ERR("NAPE: connection failed (%u)", err);
         k_mutex_lock(&nape_state_lock, K_FOREVER);
@@ -796,7 +835,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     bridge.report_count = 0;
     bridge.report_index = 0;
     bridge.map_length = 0;
+    k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+    nape_input_queue_request_button_release(&nape_input_queue);
+    k_spin_unlock(&nape_input_queue_lock, key);
     k_mutex_unlock(&nape_state_lock);
+    k_work_cancel_delayable(&nape_retry_disconnect_work);
+    atomic_clear(&retry_disconnect_pending);
     k_work_submit(&nape_input_work);
     schedule_scan_backoff();
 }
@@ -830,18 +874,28 @@ static int emit_relative(const struct device *dev, uint16_t code, int32_t value,
     return 0;
 }
 
+static void release_held_buttons(const struct device *controls) {
+    for (uint8_t i = 0; i < 5; i++) {
+        if (bridge.held_buttons & BIT(i)) {
+            input_report_key(controls, INPUT_BTN_0 + i, 0, true, K_NO_WAIT);
+        }
+    }
+    bridge.held_buttons = 0;
+}
+
 static void input_work_handler(struct k_work *work) {
     const struct device *motion = DEVICE_DT_GET(DT_NODELABEL(nape_motion));
     const struct device *controls = DEVICE_DT_GET(DT_NODELABEL(nape_controls));
     k_mutex_lock(&nape_state_lock, K_FOREVER);
-    if (!bridge.conn && bridge.held_buttons) {
-        for (uint8_t i = 0; i < 5; i++) {
-            if (bridge.held_buttons & BIT(i)) input_report_key(controls, INPUT_BTN_0 + i, 0, true, K_NO_WAIT);
-        }
-        bridge.held_buttons = 0;
-    }
-    struct queued_input queued;
-    while (!k_msgq_get(&nape_input_queue, &queued, K_NO_WAIT)) {
+    if (!bridge.conn && bridge.held_buttons) release_held_buttons(controls);
+    for (;;) {
+        struct nape_queued_input queued;
+        bool release_buttons = false;
+        k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+        bool have_input = nape_input_queue_pop(&nape_input_queue, &queued, &release_buttons);
+        k_spin_unlock(&nape_input_queue_lock, key);
+        if (release_buttons) release_held_buttons(controls);
+        if (!have_input) break;
         if (!bridge.conn || queued.generation != bridge.generation) continue;
         struct nape_mouse_input parsed;
         int err = nape_hid_parse_input(&bridge.parsed_map, queued.report_id,

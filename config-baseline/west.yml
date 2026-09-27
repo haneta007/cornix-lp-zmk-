@@ -1,0 +1,33 @@
+manifest:
+  remotes:
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
+    - name: englmaxi
+      url-base: https://github.com/englmaxi
+    - name: urob
+      url-base: https://github.com/urob
+    - name: haneta007
+      url-base: https://github.com/haneta007
+  projects:
+    # Resolved from the dev manifest used by Actions run 35829390895.
+    - name: zmk
+      remote: zmkfirmware
+      revision: 9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
+      clone-depth: 1
+      import:
+        file: app/west.yml
+    - name: zmk-helpers
+      remote: urob
+      revision: 7bcba18fc8df27303eb92a435d33ea870cc51f98
+      clone-depth: 1
+    - name: zmk-dongle-display
+      remote: englmaxi
+      revision: 2bb333f87136d33e94a49d86236ed9ec254a8060
+      clone-depth: 1
+    - name: prospector-zmk-module
+      remote: haneta007
+      repo-path: prospector---Zmk-module
+      revision: ed98221f3b52b7066dbb10ba3af8a29150b93a5a
+      path: modules/prospector-zmk-module
+  self:
+    path: config-baseline

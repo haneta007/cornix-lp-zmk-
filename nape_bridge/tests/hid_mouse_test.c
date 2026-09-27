@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "../hid_mouse.h"
+#include "../input_queue.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -50,10 +51,70 @@ static void malformed(void) {
     assert(nape_hid_parse_map(mouse_map, sizeof(mouse_map) - 1, &map) == -EINVAL);
 }
 
+static void input_queue_overflow_keeps_newest_and_requests_button_release(void) {
+    struct nape_input_queue queue = {0};
+    for (uint8_t i = 0; i < NAPE_INPUT_QUEUE_CAPACITY + 1; i++) {
+        struct nape_queued_input input = {.generation = 7, .report_id = 2, .length = 1,
+                                          .payload = {i}};
+        bool overflowed = nape_input_queue_push(&queue, &input);
+        assert(overflowed == (i == NAPE_INPUT_QUEUE_CAPACITY));
+    }
+
+    assert(queue.count == NAPE_INPUT_QUEUE_CAPACITY);
+    assert(queue.overflow_count == 1);
+    struct nape_queued_input input;
+    bool release_buttons;
+    for (uint8_t i = 1; i <= NAPE_INPUT_QUEUE_CAPACITY; i++) {
+        assert(nape_input_queue_pop(&queue, &input, &release_buttons));
+        assert(release_buttons == (i == 1));
+        assert(input.payload[0] == i);
+    }
+    assert(!nape_input_queue_pop(&queue, &input, &release_buttons));
+    assert(!release_buttons);
+}
+
+static void input_queue_overflow_after_wraparound(void) {
+    struct nape_input_queue queue = {0};
+    struct nape_queued_input input;
+    bool release_buttons;
+    for (uint8_t i = 0; i < NAPE_INPUT_QUEUE_CAPACITY; i++) {
+        input = (struct nape_queued_input){.length = 1, .payload = {i}};
+        assert(!nape_input_queue_push(&queue, &input));
+    }
+    assert(nape_input_queue_pop(&queue, &input, &release_buttons) && input.payload[0] == 0);
+    assert(!release_buttons);
+    assert(nape_input_queue_pop(&queue, &input, &release_buttons) && input.payload[0] == 1);
+    assert(!release_buttons);
+
+    for (uint8_t i = 4; i <= 6; i++) {
+        input = (struct nape_queued_input){.length = 1, .payload = {i}};
+        bool overflowed = nape_input_queue_push(&queue, &input);
+        assert(overflowed == (i == 6));
+    }
+    assert(nape_input_queue_pop(&queue, &input, &release_buttons));
+    assert(release_buttons);
+    assert(input.payload[0] == 3);
+}
+
+static void input_queue_disconnect_release_survives_without_pending_reports(void) {
+    struct nape_input_queue queue = {0};
+    struct nape_queued_input input;
+    bool release_buttons;
+
+    nape_input_queue_request_button_release(&queue);
+    assert(!nape_input_queue_pop(&queue, &input, &release_buttons));
+    assert(release_buttons);
+    assert(!nape_input_queue_pop(&queue, &input, &release_buttons));
+    assert(!release_buttons);
+}
+
 int main(void) {
     without_report_id();
     with_report_id();
     malformed();
+    input_queue_overflow_keeps_newest_and_requests_button_release();
+    input_queue_overflow_after_wraparound();
+    input_queue_disconnect_release_survives_without_pending_reports();
     puts("Nape HID mouse parser: PASS");
     return 0;
 }
