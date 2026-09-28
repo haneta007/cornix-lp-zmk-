@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 
-#define NAPE_SCROLL_LAYER_INDEX 8
-#define NAPE_MOUSE_LAYER_INDEX 9
+#define NAPE_SCROLL_LAYER_INDEX 5
+#define NAPE_MOUSE_LAYER_INDEX 6
+#define NAPE_SCROLL_COMPAT_LAYER_INDEX 7
 #define NAPE_MOUSE_LAYER_TIMEOUT_MS 700
 
 /* ZMK's scaler applies multiplier / divisor and keeps per-axis remainders. */

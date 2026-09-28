@@ -4,20 +4,26 @@ on:
     paths:
       - "nape_bridge/hid_mouse.*"
       - "nape_bridge/input_queue.h"
+      - "nape_bridge/inertia.*"
       - "nape_bridge/tests/**"
       - "boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay"
       - "boards/shields/cornix_nape_bridge/nape_layer_index.h"
       - "config/cornix.keymap"
+      - "CMakeLists.txt"
+      - "dts/bindings/input_processors/**"
       - "build.yaml"
       - ".github/workflows/nape-parser.yml"
   pull_request:
     paths:
       - "nape_bridge/hid_mouse.*"
       - "nape_bridge/input_queue.h"
+      - "nape_bridge/inertia.*"
       - "nape_bridge/tests/**"
       - "boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay"
       - "boards/shields/cornix_nape_bridge/nape_layer_index.h"
       - "config/cornix.keymap"
+      - "CMakeLists.txt"
+      - "dts/bindings/input_processors/**"
       - "build.yaml"
       - ".github/workflows/nape-parser.yml"
 jobs:
@@ -29,5 +35,7 @@ jobs:
         run: |
           cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/hid_mouse.c nape_bridge/tests/hid_mouse_test.c -o /tmp/nape-hid-test
           /tmp/nape-hid-test
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/tests/inertia_math_test.c -o /tmp/nape-inertia-test
+          /tmp/nape-inertia-test
       - name: Validate temporary layer index
         run: python3 nape_bridge/tests/validate_layer_index.py

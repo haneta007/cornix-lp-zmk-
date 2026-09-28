@@ -20,6 +20,7 @@
 
 #include "hid_mouse.h"
 #include "input_queue.h"
+#include "inertia.h"
 
 #if IS_ENABLED(CONFIG_ZMK_NAPE_DEBUG)
 LOG_MODULE_REGISTER(nape, LOG_LEVEL_DBG);
@@ -818,6 +819,7 @@ static void connected(struct bt_conn *conn, uint8_t err) {
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     if (!active_conn(conn)) return;
+    nape_inertia_reset();
     LOG_INF("NAPE: disconnected (%u)", reason);
     k_mutex_lock(&nape_state_lock, K_FOREVER);
     bridge.generation++;

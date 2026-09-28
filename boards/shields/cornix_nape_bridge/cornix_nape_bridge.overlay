@@ -12,6 +12,16 @@
         status = "okay";
     };
 
+    nape_inertia_scroll: nape_inertia_scroll {
+        compatible = "nape,virtual-pointer";
+        status = "okay";
+    };
+
+    nape_scroll_inertia: nape_scroll_inertia {
+        compatible = "nape,input-processor-inertia";
+        status = "okay";
+    };
+
     nape_motion_listener {
         compatible = "zmk,input-listener";
         device = <&nape_motion>;
@@ -20,9 +30,18 @@
         nape_scroll_mode {
             layers = <NAPE_SCROLL_LAYER_INDEX>;
             input-processors =
+                <&nape_scroll_inertia>,
                 <&zip_xy_to_scroll_mapper>,
                 <&zip_scroll_scaler NAPE_SCROLL_SCALER_NUMERATOR NAPE_SCROLL_SCALER_DENOMINATOR>;
         };
+    };
+
+    nape_inertia_listener {
+        compatible = "zmk,input-listener";
+        device = <&nape_inertia_scroll>;
+        input-processors =
+            <&nape_scroll_inertia>,
+            <&zip_scroll_scaler NAPE_SCROLL_SCALER_NUMERATOR NAPE_SCROLL_SCALER_DENOMINATOR>;
     };
 
     nape_controls_listener {

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+
+description: Tracks Nape XY motion and gates synthetic inertia scroll events
+
+compatible: "nape,input-processor-inertia"
+
+include: ip_zero_param.yaml

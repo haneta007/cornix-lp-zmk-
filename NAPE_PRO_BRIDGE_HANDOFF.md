@@ -2,7 +2,7 @@
 
 ## 状態と安全な切り戻し
 
-作業ブランチは `feat/nape-pro-ble-bridge`。`dev` と既存の `cornix_prospector_dongle_nosd` artifact は残している。Prospectorへ自動書き込みはしていない。Nape Pro本体のファームウェアも変更していない。
+Nape BLE bridgeの基準実装は `feat/nape-pro-ble-bridge`。本作業はそこから続く `feat/nape-scroll-inertia` で行い、`feat/nape-scroll-modifier`、`dev`、既存の `cornix_prospector_dongle_nosd` artifactは変更・削除していない。Prospectorへ自動書き込みはしていない。Nape Pro本体のファームウェアも変更していない。
 
 変更前の `dev` ベースラインは [Actions run 35829390895](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35829390895) で、Prospector、dongle用Cornix Left、Cornix Rightを含む全jobが成功した。旧Prospector UF2のSHA256は `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC`。ローカル退避先は `firmware/baseline-dev-35829390895/cornix_prospector_dongle_nosd.uf2`。このUF2を手元にも長期保管しておくと、Actionsの保存期限後も切り戻せる。
 
@@ -19,10 +19,10 @@ PC ← USB keyboard + mouse HID ← Prospector / XIAO nRF52840
 Nape Report notification → HID Report Map parser → Zephyr virtual input
                          → ZMK input listener → USB mouse HID
                                             └→ temporary layer processor
-                                                NAPE_MOUSE / 700 ms
+                                                NAPE_MOUSE / Layer 6 / 700 ms
 ```
 
-Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。移動X/Yのみ専用input listenerへ通し、ZMK既存のTemporary Layer Input Processor `zip_temp_layer` が既存のレイヤー9（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。既存の手動レイヤーには触れない。
+Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。通常時の移動X/YはZMK既存のTemporary Layer Input Processor `zip_temp_layer` でLayer 6（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。Layer 5（`FN_SCROLL`）が有効な間は同じX/Yをscroll mapperへ通す。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。
 
 Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、予備1）と `CONFIG_BT_MAX_PAIRED=8` を使う。通常ProspectorとCornixの設定は変更しない。split peripheral数は2のままで、Napeをsplit peripheralには数えない。ZMKでは `ZMK_SPLIT_BLE` が `ZMK_BLE` に依存するため、このvariantでもZMK BLE機能全体は無効化できない。PC出力はUSBを使い、ZMK BLE側の既存split動作を保つ。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。未発見時と切断時は最大32秒までの指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
 
@@ -33,8 +33,9 @@ Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、�
 | `build.yaml`, `build-baseline.yaml` | Nape Prospector/Cornix buildと、別archiveに出す従来名のProspector rollback buildを分離 |
 | `config-baseline/west.yml`, `config-baseline/cornix.keymap` | dev時点の依存SHAとkeymapを使うrollback build設定。keymapの固定SHA256をCIで確認 |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | Nape Bridgeを専用shieldだけでビルド |
-| `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input 2台、listener、700ms processor、BLE設定 |
-| `config/cornix.keymap` | 既存のLayer9を`NAPE_MOUSE`と表示し、Keymap Editorから編集可能にする。未割当キーはtransparent |
+| `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input、listener、700ms processor、BLE設定 |
+| `config/cornix.keymap` | Layer 5/6/7を既存枠内でFN_SCROLL/NAPE_MOUSE/競合解消に再利用 |
+| `nape_bridge/inertia.c`, `inertia_math.h` | system workqueue上の慣性scroll、Layer 5・切断・新入力時の停止 |
 | `config/nape_split_stability.conf` | ZMK #3156の診断用に、Prospector側のsplit battery fetchingを無効化 |
 | `nape_bridge/bridge.c`, `hid_mouse.[ch]`, `input_queue.h` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入。4件リングキューで古い通知を落とす時は押下buttonをrelease |
 | `nape_bridge/tests/`, `.github/workflows/nape-parser.yml` | Report IDあり/なし、X/Y、wheel、buttons、異常長、queue overflowを検証。layer indexも検証 |
@@ -76,23 +77,27 @@ Keymap Editorの次の保存commit `c18c098` では `Nape HID parser` のみ自�
 
 2026-09-27の保守差分では、Prospector bridge専用の `CONFIG_BT_MAX_CONN` を7から4へ下げた。Nape通知キューは8要素から4要素にし、キューpayloadの静的領域を576 bytesから288 bytesへ減らした。これらを含む現行版のRAM計測値は後述する。`CONFIG_BT_MAX_PAIRED=8` は維持し、split中央や既存Cornix artifactには適用しない。BLE通知が4件を超えて滞留すると古い入力を破棄し、buttonが押しっぱなしにならないようにreleaseを発行する。
 
-新しいビルドのcommitは `config/west.yml` に固定した。ベースラインのZMKは `9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0`、Zephyrは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `ed98221f3b52b7066dbb10ba3af8a29150b93a5a`。依存を浮動の `main` のまま更新していない。
+この作業ブランチの依存は `config/west.yml` とZMK側の `app/west.yml` で固定している。ZMK forkは `edafb3b058445329d4cbc226621eb1d37529480c`、Zephyr forkは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `28438c476e2e17d648ce25a14d85525997cc48e3`。今回これらのrevisionは更新していない。
 
-## Keymap EditorでNAPE_MOUSEを編集
+## Keymap EditorでFN_SCROLLとNAPE_MOUSEを編集
 
-GitHub連携のKeymap Editorで `haneta007/cornix-lp-zmk-` の `feat/nape-pro-ble-bridge` ブランチを選び、`config/cornix.keymap` を開く。番号9（0始まり、10番目）の `NAPE_MOUSE` が編集対象。番号0〜8は残し、Nape版Prospectorはこのファイルを直接ビルドする。Keymap Editorで保存した後は、そのcommitの `firmware` artifactにある `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ手動で書く。Cornix左右は再書き込み不要。
+GitHub連携のKeymap Editorで `haneta007/cornix-lp-zmk-` の `feat/nape-scroll-inertia` ブランチを選び、`config/cornix.keymap` を開く。Layer 5は `FN_SCROLL`、Layer 6は `NAPE_MOUSE`。Layer 7はLayer 5と6の同時active時に使う競合解消用で、Layer 8/9も番号を保ったまま残る。総数は従来どおり10レイヤー。Nape版Prospectorはこの共通keymapを直接ビルドする。
 
-`NAPE_MOUSE` の未割当キーは下のレイヤーを通す。既存のミュート、中クリック、エンコーダー設定と、リモート側の最新keymapで追加された左・中・右クリックを保持した。Keymap Editorが `dev` ブランチを表示している場合、この `NAPE_MOUSE` はまだ表示されない。旧UF2へ戻す場合は、冒頭のhash確認済みrollback UF2を使う。
+`NAPE_MOUSE` の未割当キーは下位レイヤーを通す。既存のミュート・中クリックと左・中・右クリック位置を保つ。Layer 8/9は `Legacy 8` / `Legacy 9` として全位置transparentにし、前のLayer 8/9の役割は5/6へ移してある。FN入口をLayer 1からLayer 5へ移すが、Layer 1のFN配置自体はlegacy用に残す。
 
-## Cornixキー押下中のNapeスクロール
+## FN_SCROLLキーを押している間のNapeスクロールと慣性
 
-`feat/nape-scroll-modifier` では、既存Layer 8を `NAPE_SCROLL` として使う。NapeのXYはProspectorの `nape_motion_listener` で、通常時は従来どおり `NAPE_MOUSE` の700ms一時切替を通り、Layer 8が有効な間はZMK標準のXY-to-scroll mapperとscroll scalerを通ってUSBホイールとしてPCへ出る。Layer 8のoverrideに `process-next` は付けず、スクロール中に親側の `zip_temp_layer` を呼ばない。ボタンと物理ホイールは従来の `nape_controls_listener` の経路を使う。
+Base Layerの無変換とEnterにある既存layer-tapは、タップすると従来どおり無変換/Enter、ホールドするとLayer 5を有効にする。150msのhold-preferredとquick-tap設定は変えていない。専用scrollキーの追加は不要。
 
-Keymap EditorではGitHub repositoryの `feat/nape-scroll-modifier` ブランチにある `config/cornix.keymap` を開き、希望するCornixキーへ `&mo 8`（Layer 8 hold相当）を割り当てる。Layer 8は全キーtransparentなので通常の文字入力を通す。スクロール用キーと同じ位置は `NAPE_MOUSE` 上でもtransparentにする。現在のLayer 9で避ける位置（キー位置は0始まり）は、`19`=左クリック、`20`=中クリック、`21`=右クリック、`30`=ミュート、`31`=中クリック。
+固定ZMK commit `edafb3b058445329d4cbc226621eb1d37529480c` の `app/src/keymap.c` を確認した。既定のレイヤー順では高い番号が先に照合されるため、Layer 7がLayer 6より優先される。Layer 7はLayer 5と6が両方activeのときだけ条件付きで有効になり、Layer 6上のマウスボタンと競合するkey position 19/20/21をFNの `N5` / `N6` / `KP_PLUS` に置き換える。他のLayer 7位置はtransparentなのでLayer 5/6の動作を通す。Layer 6の30/31はFN Layer 5と同じミュート/中クリック割当。なおProspector設定ではZMK Studioのlayer reorderingが有効で、実機で優先順を変更している場合はこの既定順と異なる可能性がある。今回の動作確認ではStudio上のレイヤー並べ替えを行わず、必要なら既定順へ戻して確認する。
 
-初期scalerは `1/8`。倍率を変える場合は `nape_layer_index.h` の `NAPE_SCROLL_SCALER_NUMERATOR` と `NAPE_SCROLL_SCALER_DENOMINATOR` を編集する。現在のmapperは符号を変えず、Xを水平wheel、Yを垂直wheelへ送る。逆方向が必要なら同じoverlay overrideへ標準 `zip_scroll_transform` を追加し、`INPUT_TRANSFORM_X_INVERT` または `INPUT_TRANSFORM_Y_INVERT` を指定する。Nape実機のReport Map raw dumpは保管されていないため、`1/8`のスクロール速度と方向は書き込み後に確認する。
+Layer 5のkeymap処理とNape scroll入力は別経路で同時に動く。通常X/Yは `nape_motion_listener` のLayer 5 overrideで、慣性tracker → `zip_xy_to_scroll_mapper` → `zip_scroll_scaler 1/8` の順にUSB HID scrollへ送る。overrideに `process-next` は付けず、親側のLayer 6 700ms `zip_temp_layer` を呼ばない。ボタンと物理wheelは従来の別 `nape_controls_listener` を使う。
 
-ビルド後は `firmware` artifact内の `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ手動で書く。Cornix左右やNape本体への書き込みは不要。実機では通常カーソル移動、キー押下中の縦横スクロールとカーソル停止、キーを離した直後のカーソル復帰、Layer 8と9同時active時のoverride、スクロール中に700ms timerが更新されないこと、Nape buttons/物理wheel、Cornix左右の文字入力を確認する。
+慣性trackerはLayer 5中のNape XYだけを観測し、通常のmapper/scaler経路を維持する。40ms入力停止後、速いフリックでのみ慣性を始め、system workqueue上のdelayable workを16ms周期で動かす。速度はQ8固定小数点EMA `(old×3 + sample)/4`、方向反転時は旧速度を捨て、tickごとに230/256へ減衰する。最低開始速度は8 raw count/tick、停止thresholdは1 count/tick、最大継続は1200ms。X/Yは別速度・端数を持ち、既存1/8 scalerを慣性scrollにも一度だけ適用する。数値は `nape_bridge/inertia_math.h` に集約。
+
+慣性scrollは専用virtual input deviceから直接wheel/hwheelを出すため、通常のXY mapperやLayer 6 temporary-layer timerに入り直さない。入力スレッドへ遅れて届いた古い合成イベントは世代タグで破棄する。Layer 5がOFF、Napeが切断、または新しいXYが来たとき速度・端数を消し、保留中のイベントも無効化する。ZMK標準scroll mapperの符号は維持し、Xはhorizontal wheel、Yはvertical wheel。方向を逆にする場合は標準transform processorをmapperの前に加える。
+
+Layer 5はFNキーのholdでもscroll modifierでもあるため、同じhold操作を使う。必要ならKeymap Editorで追加の任意キーへ `&mo 5` を割り当てられる。Layer 8/9はinactive legacy slotsなので新しい設定では使わない。
 
 ## Nape Proのペアリング
 
@@ -105,11 +110,12 @@ Keymap EditorではGitHub repositoryの `feat/nape-scroll-modifier` ブランチ
 ## 初回テスト
 
 1. 旧UF2のバックアップを確認してから、通常版 `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ**手動**で書く。Cornix左右は現状維持。
-2. Napeの電源を切ったまま、Cornix左右で通常の文字入力を確認する。
-3. Napeを上記手順でペアリングし、ボールのX/YでPCポインタが動くこと、wheelのスクロール、左/右/中クリックを確認する。
-4. ボールを動かすとProspectorのレイヤー表示が `NAPE_MOUSE` となり、止めて約700ms後に元へ戻ることを確認する。wheelのみ、buttonのみでは延長しないことも確認する。
-5. Napeだけ電源OFFにして、Cornixの文字入力が続くことを確認する。その後Napeを戻し、backoff後に再接続することを確認する。
-6. Cornix片側を一時的にOFF/ONし、Nape scanよりsplit再接続が優先されることを確認する。
+2. Napeの電源を切ったまま、Cornix左右の文字入力を確認する。Baseの無変換/Enterをタップして従来の入力を確認し、同じ位置をホールドしてFN_SCROLL動作を確認する。
+3. Napeをペアリングし、Layer 5をOFFのときはボールでカーソルが動いてLayer 6 `NAPE_MOUSE` が700ms後に解除されることを確認する。
+4. 無変換またはEnter側をホールドしてLayer 5 `FN_SCROLL`を有効にし、Nape X/Yが横/縦スクロールになりカーソルが止まること、FNの数字/Fキーが同時に使えることを確認する。
+5. ボールをゆっくり動かした場合は余分な慣性なし、強く弾いた場合は最大約1.2秒以内で減速停止、Layer 5を離したら直ちに停止することを確認する。
+6. Nape buttonsと物理wheelは従来どおり、Layer 5/6同時active中も位置19/20/21がFNのN5/N6/KP_PLUSになること、マウスクリックへ化けないことを確認する。
+7. Nape切断中もCornix入力が継続すること、再接続後に古いスクロールが出ないことを確認する。
 
 ## Cornixが接続表示なのに入力しない時
 
@@ -192,7 +198,8 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 
 ## 調整箇所と既知の制限
 
-- タイムアウトとlayer indexは `boards/shields/cornix_nape_bridge/nape_layer_index.h` の `NAPE_MOUSE_LAYER_TIMEOUT_MS`（初期値700）と `NAPE_MOUSE_LAYER_INDEX`（初期値9）で変更する。CIは共通keymapの番号9が`NAPE_MOUSE`であることを検査する。
+- layer indexと速度調整は `boards/shields/cornix_nape_bridge/nape_layer_index.h` の `NAPE_SCROLL_LAYER_INDEX`（5）、`NAPE_MOUSE_LAYER_INDEX`（6）、`NAPE_SCROLL_COMPAT_LAYER_INDEX`（7）、`NAPE_MOUSE_LAYER_TIMEOUT_MS`（700）および`NAPE_SCROLL_SCALER_NUMERATOR/DENOMINATOR`（初期値1/8）で管理する。CIは共通keymapの対応とレイヤー数10を検査する。
+- 慣性の開始遅延、tick周期、decay、最低開始速度、stop threshold、最大時間は `nape_bridge/inertia_math.h` にまとめた。長く滑らせるにはdecay numeratorを大きく、早く止めるには小さくするかstop thresholdを上げる。発動しやすさはminimum start countsを下げ、開始判定待ちはstart delayで調整する。初期40msはReport周期実測前の値。
 - `NAPE_MOUSE`の未割当キーはtransparent。既存のミュート、中クリック、エンコーダー設定は保持した。キー割当はKeymap Editorでfeature branchの`config/cornix.keymap`を開いて編集する。クリックはNape本体のボタンからも送る。
 - parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
 - Nape実機のReport Map raw dumpは保存されていない。ユーザー実機でX/Y・wheel・button転送は動作確認済みだが、descriptorの内容や他機種への汎用性は未確認。未知のReportは通常版でUSBへ転送しない。

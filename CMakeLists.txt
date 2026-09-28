@@ -1,4 +1,5 @@
 if(CONFIG_ZMK_NAPE_BRIDGE)
   zephyr_library()
-  zephyr_library_sources(nape_bridge/bridge.c nape_bridge/hid_mouse.c)
+  zephyr_library_include_directories(boards/shields/cornix_nape_bridge)
+  zephyr_library_sources(nape_bridge/bridge.c nape_bridge/hid_mouse.c nape_bridge/inertia.c)
 endif()
