@@ -76,7 +76,7 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 GitHub連携のKeymap Editorで `haneta007/cornix-lp-zmk-` の `feat/nape-pro-ble-bridge` ブランチを選び、`config/cornix.keymap` を開く。番号9（0始まり、10番目）の `NAPE_MOUSE` が編集対象。番号0〜8は残し、Nape版Prospectorはこのファイルを直接ビルドする。Keymap Editorで保存した後は、そのcommitの `firmware` artifactにある `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ手動で書く。Cornix左右は再書き込み不要。
 
-`NAPE_MOUSE` の未割当キーは下のレイヤーを通す。既存のミュート、中クリック、エンコーダー設定は初期値として保持した。Keymap Editorが `dev` ブランチを表示している場合、この `NAPE_MOUSE` はまだ表示されない。旧UF2へ戻す場合は、冒頭のhash確認済みrollback UF2を使う。
+`NAPE_MOUSE` の未割当キーは下のレイヤーを通す。既存のミュート、中クリック、エンコーダー設定と、リモート側の最新keymapで追加された左・中・右クリックを保持した。Keymap Editorが `dev` ブランチを表示している場合、この `NAPE_MOUSE` はまだ表示されない。旧UF2へ戻す場合は、冒頭のhash確認済みrollback UF2を使う。
 
 ## Nape Proのペアリング
 
