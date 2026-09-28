@@ -1,0 +1,66 @@
+name: Temporary Nape memory measurement
+
+on:
+  push:
+    branches:
+      - feat/nape-scroll-inertia
+    paths:
+      - .github/workflows/nape-memory-diagnostic.yml
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    container:
+      image: zmkfirmware/zmk-build-arm:stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: current
+      - uses: actions/checkout@v4
+        with:
+          ref: 3cc056deb115f29ce62b813e04606aad4d9d5394
+          path: baseline
+      - name: Build base and inertia Prospector variants and compare ELF sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE"
+          west_dir="$root/west"
+          build_dir="$RUNNER_TEMP/nape-memory-build"
+          mkdir -p "$west_dir/config" "$build_dir"
+          cp -R "$root/current/config/." "$west_dir/config/"
+          cd "$west_dir"
+          west init -l "$west_dir/config"
+          west update --fetch-opt=--filter=tree:0
+          west zephyr-export
+
+          for variant in baseline current; do
+            if [ "$variant" = baseline ]; then
+              source_root="$root/baseline"
+            else
+              source_root="$root/current"
+            fi
+            west build -s zmk/app -d "$build_dir/$variant" -b 'xiao_ble//zmk' \
+              -S 'studio-rpc-usb-uart nrf52840-nosd' -- \
+              -DZMK_CONFIG="$source_root/config" \
+              -DZMK_EXTRA_MODULES="$source_root" \
+              -DSHIELD='cornix_dongle_adapter prospector_adapter cornix_nape_bridge' \
+              -DKEYMAP_FILE="$source_root/config/cornix.keymap" \
+              -DEXTRA_CONF_FILE="$source_root/config/nape_fixed_brightness.conf"
+            size_output=$(arm-zephyr-eabi-size "$build_dir/$variant/zephyr/zephyr.elf")
+            printf '%s\n' "$size_output"
+            read -r text data bss _ <<< "$(printf '%s\n' "$size_output" | tail -n 1)"
+            ram=$((data + bss))
+            flash=$((text + data))
+            echo "::notice title=Nape ELF size::$variant text=$text data=$data bss=$bss flash(text+data)=$flash RAM(data+bss)=$ram"
+            echo "$variant $text $data $bss $flash $ram" >> "$RUNNER_TEMP/nape-memory-results.txt"
+          done
+
+          {
+            echo '## Nape Prospector ELF memory comparison'
+            echo '| Source | text | data | bss | Flash (text + data) | RAM (data + bss) |'
+            echo '| --- | ---: | ---: | ---: | ---: | ---: |'
+            while read -r variant text data bss flash ram; do
+              echo "| $variant | $text | $data | $bss | $flash | $ram |"
+            done < "$RUNNER_TEMP/nape-memory-results.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
