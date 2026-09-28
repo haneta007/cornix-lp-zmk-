@@ -66,6 +66,8 @@ def main() -> None:
             "normal Nape motion must keep its 700 ms temporary mouse layer")
     require(re.search(r"(?s)nape_scroll_inertia:\s*nape_scroll_inertia\s*\{\s*compatible\s*=\s*\"nape,input-processor-inertia\"", overlay) is not None,
             "the custom tracker input processor must be declared in the shield overlay")
+    require(re.search(r"(?s)nape_scroll_inertia:\s*nape_scroll_inertia\s*\{[^}]*#input-processor-cells\s*=\s*<0>;", overlay) is not None,
+            "the zero-parameter tracker binding must declare zero input-processor cells")
     require(re.search(r"(?s)nape_inertia_scroll:\s*nape_inertia_scroll\s*\{\s*compatible\s*=\s*\"nape,virtual-pointer\"", overlay) is not None,
             "synthetic inertia must use a separate virtual input device")
     scroll_override = re.search(r"(?s)\bnape_scroll_mode\s*\{([^{}]*)\}", overlay)
