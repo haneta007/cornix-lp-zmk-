@@ -44,7 +44,7 @@ Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、�
 
 ## ビルドとUF2
 
-GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成功したrunの `firmware` artifactにNape版とCornix左右のbuildが入り、従来Prospector版は独立した `firmware-baseline-dev` artifactに入る。通常のartifactへ同名の旧Prospector buildを混在させない。
+Keymap Editorで `feat/nape-pro-ble-bridge` ブランチのkeymapを保存すると、**Build ZMK firmware** workflowが自動起動する。GitHubのActionsでそのrunを開き、成功後に画面下部の `firmware` artifactをダウンロードする。手動で起動する場合はActionsの **Build ZMK firmware** から **Run workflow** を選び、同じfeatureブランチを指定する。`firmware` artifactにNape版とCornix左右のbuildが入り、従来Prospector版は独立した `firmware-baseline-dev` artifactに入る。
 
 通常版とデバッグ版の確認runは `35838121281`（全12 job成功）。Cornixの「接続済み」表示後に入力しない症状の診断artifactを追加したcommitは `a30a1e02abea3307b9d61b2fd5eb697fb9a1c12e`。[Actions run 35890038913](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/35890038913) は全13 job成功し、診断UF2を `firmware/split-stability-35890038913/`（Git管理対象外）へ展開済み。
 
@@ -57,6 +57,8 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 通常Nape版は環境光センサーによる自動調光を無効にし、固定輝度80でビルドする。設定ファイルは `config/nape_fixed_brightness.conf`。明るさを変更する場合は `CONFIG_PROSPECTOR_FIXED_BRIGHTNESS` を1〜100の範囲で編集する。自動調光へ戻す場合は `CONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=y` に変更して固定値設定を外し、再ビルドする。この専用設定は通常版だけに適用し、デバッグ・USBログ・bond cleanup・split stabilityの各variantおよび切り戻し版には適用しない。
 
 2026-09-28の固定輝度版は [Actions run 36363692908](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36363692908)。全18 jobが成功した。通常版の生成Kconfigには `CONFIG_PROSPECTOR_FIXED_BRIGHTNESS=80` が出力される。この項目はProspector Kconfigで環境光センサー無効時のみ有効なため、自動調光OFFも確認できる。リンク時RAMは `247290 / 262144` bytes（94.33%、残り14854 bytes）で、直前版の `248570` bytesから1280 bytes減った。生成UF2 SHA256は `C6589F6286E510452FB04BAD8292B170F8E16028F4568F8926957B48351FD102`。通常版の画面輝度は実機で未確認なので、Prospectorに手動で書いた後、希望する見え方か確認する。
+
+Keymap Editorの次の保存commit `c18c098` では `Nape HID parser` のみ自動実行された。原因は本firmware workflowのpush条件が `tags-ignore` のみで、ブランチpushが対象外だったこと。`branches: ["**"]` へ修正したcommit `28fe73e` のpushで [Build ZMK firmware run 36365659208](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36365659208) が自動起動し、全18 job成功した。最新keymapと固定輝度80を含む `firmware/cornix_prospector_nape_bridge_nosd.uf2` のSHA256は `9518A995A996AE298F63010CC846642D1722659CC3136540758795564C4ACD9A`。同runの `firmware-baseline-dev/cornix_prospector_dongle_nosd.uf2` は既存rollback hash `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC` と一致する。新UF2の実機書き込みと動作確認は未実施。
 
 診断版ではProspector画面のCornixバッテリー残量が更新されない。通常版と既存artifactは変更せず残す。
 
