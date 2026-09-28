@@ -1,4 +1,21 @@
+Warning: truncated output (original token count: 10589)
+Total output lines: 239
+
 # Nape Pro → Prospector → Cornix 引き継ぎ
+
+## 2026-09-29 FN_SCROLLと慣性スクロール
+
+`feat/nape-scroll-inertia`では既存のlayer番号を再利用し、Layer 5を`FN_SCROLL`、Layer 6を`NAPE_MOUSE`、Layer 7を両者が同時に有効な時の競合解消に使う。旧Layer 8/9はtransparentなlegacy layerとして保持する。Layer 1のFN bindingsとsensor-bindingsはそのまま残し、FN keyboard操作をLayer 5へ複写した。Base Layer 0の無変換・Enterにある`&lt150`はタップ時の無変換/Enterと150msのtap-hold設定を保ったまま、ホールド先をLayer 5に変更した。
+
+Layer 6は既存のNape mouse bindingsと700ms temporary-layer timeoutを維持する。Layer 7はLayer 5と6の双方がactiveな時だけ有効になり、マウスbuttonと競合する位置19/20/21をFNの`N5`/`N6`/`KP_PLUS`として解決する。他の位置はtransparent。既定レイヤー優先順位ではLayer 7が6より優先されるため、NAPE_MOUSEが残った状態でFN_SCROLLを押してもこの3キーのFN操作を通す。
+
+Layer 5中はNape XYを既存の`zip_xy_to_scroll_mapper`と`zip_scroll_scaler 1/8`へ通し、慣性trackerは入力を通過させながら速度だけ記録する。停止40ms後に閾値を超える速い動きだけ、別のvirtual input deviceから慣性wheel eventを出す。system workqueue上のdelayable workを16ms周期で使い、Q8 EMA `(old×3 + sample)/4`、方向反転時の速度リセット、減衰230/256、最低開始速度8 raw counts/tick、停止閾値1 count/tick、最大1200ms、軸ごとのfractional remainderを使用する。慣性listenerにはXY mapperとtemporary-layer processorがないためLayer 6の700ms timerに入らない。Layer 5解除時とNape切断時は速度・端数を消してworkをキャンセルし、work側でもLayer 5を再確認する。
+
+固定commitのZMK/Zephyr依存は更新していない。`Nape HID parser` run [36494844006](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844006)はinertia math (ASan/UBSan)・parser・layer validatorが成功。`Build ZMK firmware` run [36494844832](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844832)はNape variant、Cornix Left/Right、rollbackを含む全matrix buildに成功した。レイヤー検証では無変換とEnterの両方がLayer 5を指すことも確認した。
+
+Prospector通常Nape版のRAM/Flashは、変更前のLayer 8 scroll buildで247,290 / 262,144 bytes (94.33%)・582,056 bytes、慣性とlayer migration追加後で247,546 / 262,144 bytes (94.43%)・584,124 bytes。差分はRAM +256 bytes、Flash +2,068 bytes。変更前値は固定west manifestによる比較buildのZephyr memory-region report、変更後値は同一設定の通常Nape build reportから取得した。
+
+最新の通常UF2は[firmware run 36494844832](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844832)の`firmware` artifact内にある`cornix_prospector_nape_bridge_nosd.uf2`。ローカル保管先は`firmware/nape-scroll-inertia-36494844832/cornix_prospector_nape_bridge_nosd.uf2`、サイズ1,168,384 bytes、SHA256 `FF55C6E37BCFBF3E27B0DFF362A022CD21AA0EF8F1B4ADCE165205A53B68501E`。Prospectorだけに手動で書く。自動flashはしていない。実機では無変換/Enterのtap-hold、FN操作と同時のスクロール、fling後の慣性、Layer 5解除直後の停止、Layer 6残留時のFN操作、button/wheel、左右split typingを確認する。40ms開始遅延と慣性係数は実機操作感で調整する。
 
 ## 状態と安全な切り戻し
 
@@ -109,22 +126,7 @@ Layer 5はFNキーのholdでもscroll modifierでもあるため、同じhold操
 
 ## 初回テスト
 
-1. 旧UF2のバックアップを確認してから、通常版 `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ**手動**で書く。Cornix左右は現状維持。
-2. Napeの電源を切ったまま、Cornix左右の文字入力を確認する。Baseの無変換/Enterをタップして従来の入力を確認し、同じ位置をホールドしてFN_SCROLL動作を確認する。
-3. Napeをペアリングし、Layer 5をOFFのときはボールでカーソルが動いてLayer 6 `NAPE_MOUSE` が700ms後に解除されることを確認する。
-4. 無変換またはEnter側をホールドしてLayer 5 `FN_SCROLL`を有効にし、Nape X/Yが横/縦スクロールになりカーソルが止まること、FNの数字/Fキーが同時に使えることを確認する。
-5. ボールをゆっくり動かした場合は余分な慣性なし、強く弾いた場合は最大約1.2秒以内で減速停止、Layer 5を離したら直ちに停止することを確認する。
-6. Nape buttonsと物理wheelは従来どおり、Layer 5/6同時active中も位置19/20/21がFNのN5/N6/KP_PLUSになること、マウスクリックへ化けないことを確認する。
-7. Nape切断中もCornix入力が継続すること、再接続後に古いスクロールが出ないことを確認する。
-
-## Cornixが接続表示なのに入力しない時
-
-今回の症状は、複数split peripheralと `CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING=y` の組合せで、BLE接続表示は出てもキー通知用position-stateのGATT購読が欠落するZMK [Issue #3156](https://github.com/zmkfirmware/zmk/issues/3156) の条件に一致する。根本修正案 [PR #3411](https://github.com/zmkfirmware/zmk/pull/3411) は調査時点で未mergeのため、診断artifactはbattery fetching/proxyを無効化して競合を回避する。Prospector画面のCornixバッテリー残量はこの版では更新されない。
-
-1. Nape Proの電源を切る。
-2. `cornix_prospector_nape_bridge_split_stability_nosd.uf2` をProspectorだけに手動で書く。Cornix左右には書かない。
-3. Prospectorを起動し、Cornix Leftを接続して入力を試す。次にRightを接続して両側を試す。
-4. 入力が戻ればsplit GATT discovery競合の可能性が高い。戻らなければこの原因と断定せず、RTT debug logで `Found position state characteristic` と `[SUBSCRIBED]` を確認する。
+1. 旧UF2のバックア…589 tokens truncated…te characteristic` と `[SUBSCRIBED]` を確認する。
 
 この診断版を追加した時点ではNape Proの実機動作は未検証だった。その後の2026-09-26のユーザー実機報告では、接続、PCカーソル、wheel/button、画面のレイヤー切替と約700ms後の復帰を確認している。今回のKeymap Editor対応後のUF2は、書き込みと実機再確認が必要。
 
@@ -222,3 +224,4 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - [Nape HID parser run 36361570858](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361570858) はparser testとlayer index検査が成功。[Build ZMK firmware run 36361974258](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361974258) は通常matrixの12 build、切り戻しProspector、両archive mergeを含む全18 jobが成功した。
 - `firmware` artifactの `cornix_prospector_nape_bridge_nosd.uf2` はSHA256 `298F4F7FC6490BC362512FA94B83BE60EF3DE2AD829190F1CD010E453AE34ABA`。Prospectorへ手動で書くのはこのUF2。`firmware-baseline-dev` の `cornix_prospector_dongle_nosd.uf2` はSHA256 `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC` で、保存済み旧UF2と一致した。Cornix左右もbuild成功し、今回のための再書き込みは不要。
 - Keymap Editor対応後の新UF2による実機確認は未実施。書き込み後にCornix左右の文字入力、Napeのポインタ・wheel・button、番号9への切替と約700ms後の復帰を確認する。
+
