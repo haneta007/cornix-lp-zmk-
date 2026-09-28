@@ -5,6 +5,9 @@ on:
       - feat/nape-scroll-inertia
     paths:
       - .github/workflows/nape-build-diagnostic.yml
+      - boards/shields/cornix_nape_bridge/**
+      - dts/bindings/input_processors/nape,input-processor-inertia.yaml
+      - nape_bridge/**
 
 jobs:
   build-nape:
