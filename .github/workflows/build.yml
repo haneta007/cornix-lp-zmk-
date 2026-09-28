@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Keep rollback keymap pinned to dev baseline
-        run: echo "fef5abc8693d8d984951f21fc76d1012d206909e6f81876d25dca0d9cf2e1043  config-baseline/cornix.keymap" | sha256sum --check
+        run: echo "5cbe5c660bb6e60194c6c0a275a1621519d490c41c01e02963bfd3277391ef7a  config-baseline/cornix.keymap" | sha256sum --check
 
   build:
     needs: validate-baseline
