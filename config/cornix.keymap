@@ -112,10 +112,10 @@
         base_layer {
             display-name = "Base";
             bindings = <
-&kp ESC    &kp Q     &kp W     &kp E                   &kp R               &kp T                                         &kp Y             &kp U            &kp I                &kp O     &kp P     &kp DEL
-&kp LALT   &kp A     &kp S     &kp D                   &kp F               &kp G                                         &kp H             &kp J            &kp K                &kp L     &kp BSLH  &kp SQT
-&kp LSHFT  &kp Z     &kp X     &kp C                   &kp V               &kp B                   &kp C_MUTE  &mkp MB3  &kp N             &kp M            &kp COMMA            &kp DOT   &kp UP    &kp FSLH
-&kp LCTRL  &kp LGUI  &kp LALT  &lt150 FN INT_MUHENKAN  &mt200 LSHFT SPACE  &lt150 EDIT INT_HENKAN                        &lt150 EDIT BSPC  &lt150 FN ENTER  &lt300 CUSTOM MINUS  &kp LEFT  &kp DOWN  &kp RIGHT
+&kp ESC    &kp Q     &kp W     &kp E                  &kp R               &kp T                                         &kp Y             &kp U            &kp I                &kp O     &kp P     &kp DEL
+&kp LALT   &kp A     &kp S     &kp D                  &kp F               &kp G                                         &kp H             &kp J            &kp K                &kp L     &kp BSLH  &kp SQT
+&kp LSHFT  &kp Z     &kp X     &kp C                  &kp V               &kp B                   &kp C_MUTE  &mkp MB3  &kp N             &kp M            &kp COMMA            &kp DOT   &kp UP    &kp FSLH
+&kp LCTRL  &kp LGUI  &kp LALT  &lt150 8 INT_MUHENKAN  &mt200 LSHFT SPACE  &lt150 EDIT INT_HENKAN                        &lt150 EDIT BSPC  &lt150 FN ENTER  &lt300 CUSTOM MINUS  &kp LEFT  &kp DOWN  &kp RIGHT
             >;
 
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &scroll_encoder>;
