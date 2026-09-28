@@ -56,7 +56,7 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 診断版ではProspector画面のCornixバッテリー残量が更新されない。通常版と既存artifactは変更せず残す。
 
-ローカルUF2のSHA256：
+以前の診断runで保存したローカルUF2のSHA256（現行runのUF2ではない）：
 
 | UF2 | SHA256 |
 | --- | --- |
@@ -66,9 +66,9 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 新しい診断UF2のローカルパスは `firmware/split-stability-35890038913/cornix_prospector_nape_bridge_split_stability_nosd.uf2`。
 
-従来名のProspector buildは `firmware-baseline-dev` archiveへ分離した。これは過去に解決した依存SHAでの再buildであり、変更前に保存した実物UF2との同一性を示すhash検証はしていない。変更前の完全な切り戻しには冒頭のベースラインUF2（SHA256 `C43C...`）を使う。
+従来名のProspector buildは `firmware-baseline-dev` archiveへ分離した。これは過去に解決した依存SHAでの再buildである。2026-09-28のrunでは、保存済み旧UF2とSHA256が一致した。変更前の完全な切り戻しには冒頭のベースラインUF2（SHA256 `C43C...`）を使う。
 
-2026-09-27の保守差分では、Prospector bridge専用の `CONFIG_BT_MAX_CONN` を7から4へ下げた。Nape通知キューは8要素から4要素にし、キューpayloadの静的領域を576 bytesから288 bytesへ減らした。接続プール縮小を含めたRAM合計は、この更新分のfirmware buildが未実行のため未測定。`CONFIG_BT_MAX_PAIRED=8` は維持し、split中央や既存Cornix artifactには適用しない。BLE通知が4件を超えて滞留すると古い入力を破棄し、buttonが押しっぱなしにならないようにreleaseを発行する。
+2026-09-27の保守差分では、Prospector bridge専用の `CONFIG_BT_MAX_CONN` を7から4へ下げた。Nape通知キューは8要素から4要素にし、キューpayloadの静的領域を576 bytesから288 bytesへ減らした。これらを含む現行版のRAM計測値は後述する。`CONFIG_BT_MAX_PAIRED=8` は維持し、split中央や既存Cornix artifactには適用しない。BLE通知が4件を超えて滞留すると古い入力を破棄し、buttonが押しっぱなしにならないようにreleaseを発行する。
 
 新しいビルドのcommitは `config/west.yml` に固定した。ベースラインのZMKは `9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0`、Zephyrは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `ed98221f3b52b7066dbb10ba3af8a29150b93a5a`。依存を浮動の `main` のまま更新していない。
 
@@ -180,8 +180,7 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - `NAPE_MOUSE`の未割当キーはtransparent。既存のミュート、中クリック、エンコーダー設定は保持した。キー割当はKeymap Editorでfeature branchの`config/cornix.keymap`を開いて編集する。クリックはNape本体のボタンからも送る。
 - parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
 - Nape実機のReport Map raw dumpは保存されていない。ユーザー実機でX/Y・wheel・button転送は動作確認済みだが、descriptorの内容や他機種への汎用性は未確認。未知のReportは通常版でUSBへ転送しない。
-- 最終CIのリンク時RAMは通常版 `256770 / 262144` バイト（97.95%、残り5374バイト）、デバッグ版 `259714 / 262144` バイト（99.07%、残り2430バイト）。旧Prospectorのベースラインは `252730 / 262144` バイト（96.41%）。これは静的配置と設定済みスタックの値であり、BLE 3接続時の実際のスタック余裕や連続稼働は未測定。特にデバッグ版は余裕が小さいため短時間のRTT調査用とし、通常運用は通常版を使う。
-- 2026-09-27のqueue/connection pool縮小後のRAM値は、更新コードをcompile/linkするまでは不明。上記RAM値は縮小前の計測結果。目標の95%未満へ下がったかはActions build後に再確認する。
+- [2026-09-28のCI](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361974258)のリンク時RAMは通常版 `248570 / 262144` バイト（94.82%、残り13574バイト）、デバッグ版 `251514 / 262144` バイト（95.94%、残り10630バイト）。保守差分前の通常版 `256770` バイトから8200バイト減った。旧Prospectorのベースラインは `252730 / 262144` バイト（96.41%）。これは静的配置と設定済みスタックの値であり、BLE 3接続時の実際のスタック余裕や連続稼働は未測定。デバッグ版は短時間のRTT調査用とし、通常運用は通常版を使う。
 - Bluetooth認証方式とレポート内容はNape本体の実機・ファーム版に依存する。実機で不適合が判明した場合は、HEX dumpを根拠に小型parserへ限定的に対応を追加する。
 
 ## 2026-09-27 保守差分の確認状況（レイヤー変更前）
@@ -192,3 +191,11 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - runの `firmware` archiveは2.82 MB、GitHub表示のarchive SHA256は `197bb6e50bc715dcce636090cc59a1c1f07450a4ef6df0193074253afe757e6a`。Nape対応UF2はこのarchiveから取得する。`firmware-baseline-dev` archiveは369 KB、archive SHA256は `602bc626842b013a6787088ba2ea68d29311d43b4d6b5b58ff8e543c4884d6a5`。これらはZIP archiveのdigestで、個々のUF2 hashではない。
 - このWindows環境にC toolchain / west / Zephyr SDKがないためローカルcompile/linkは未実行。Actionsはbuild成功したが、ログへの匿名アクセスが使えず、新しいリンク時RAM値と個別UF2のSHA256は未採取。目標の95%未満になったかは未確認。
 - 切断処理はbutton releaseを通知キューに記録するよう補強した。切断workが新しいBLE接続後に実行された場合でも、古いheld-button状態を新接続へ持ち越さない。
+
+## 2026-09-28 Keymap Editor対応の確認結果
+
+- `NAPE_MOUSE`は共通 `config/cornix.keymap` の番号9。番号0〜8は保持し、Nape専用の追加レイヤーは廃止した。タイムアウトは700msのまま。ローカルのレイヤー検証とYAML parseは成功した。
+- Keymap Editorで `feat/nape-pro-ble-bridge` ブランチを開き、番号9に `NAPE_MOUSE` が表示されることを確認した。未割当キーは `&trans`、リモート側で追加された左・中・右クリックも表示される。Editorで保存はしていない。
+- [Nape HID parser run 36361570858](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361570858) はparser testとlayer index検査が成功。[Build ZMK firmware run 36361974258](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361974258) は通常matrixの12 build、切り戻しProspector、両archive mergeを含む全18 jobが成功した。
+- `firmware` artifactの `cornix_prospector_nape_bridge_nosd.uf2` はSHA256 `298F4F7FC6490BC362512FA94B83BE60EF3DE2AD829190F1CD010E453AE34ABA`。Prospectorへ手動で書くのはこのUF2。`firmware-baseline-dev` の `cornix_prospector_dongle_nosd.uf2` はSHA256 `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC` で、保存済み旧UF2と一致した。Cornix左右もbuild成功し、今回のための再書き込みは不要。
+- Keymap Editor対応後の新UF2による実機確認は未実施。書き込み後にCornix左右の文字入力、Napeのポインタ・wheel・button、番号9への切替と約700ms後の復帰を確認する。
