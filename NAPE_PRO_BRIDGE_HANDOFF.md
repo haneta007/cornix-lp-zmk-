@@ -54,6 +54,8 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 - `cornix_prospector_dongle_nosd.uf2`：`firmware-baseline-dev` archiveに含まれる従来名のrollback build。依存はActions run 35829390895で解決されていたSHAに固定。これはローカル保管済み旧UF2とのbyte-for-byte一致を保証しない。完全なhash確認済rollbackには冒頭に記したローカル保存UF2を使う。
 - `cornix_left_for_dongle_nosd.uf2`、`cornix_right_nosd.uf2`：既存Cornix左右版。今回の機能のための再書き込みは不要。
 
+通常Nape版は環境光センサーによる自動調光を無効にし、固定輝度80でビルドする。設定ファイルは `config/nape_fixed_brightness.conf`。明るさを変更する場合は `CONFIG_PROSPECTOR_FIXED_BRIGHTNESS` を1〜100の範囲で編集する。自動調光へ戻す場合は `CONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR=y` に変更して固定値設定を外し、再ビルドする。この専用設定は通常版だけに適用し、デバッグ・USBログ・bond cleanup・split stabilityの各variantおよび切り戻し版には適用しない。
+
 診断版ではProspector画面のCornixバッテリー残量が更新されない。通常版と既存artifactは変更せず残す。
 
 以前の診断runで保存したローカルUF2のSHA256（現行runのUF2ではない）：
