@@ -64,7 +64,7 @@
             #binding-cells = <0>;
             wait-ms = <40>;
             tap-ms = <40>;
-            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp A &kp N &kp D &kp N6 &kp LBKT>;
+            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp A &kp N &kp D &kp N7 &kp LBKT>;
         };
 
         macro_m1: macro_m1 {
@@ -72,7 +72,7 @@
             #binding-cells = <0>;
             wait-ms = <40>;
             tap-ms = <40>;
-            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp LS(A) &kp N &kp D &kp N6 &kp AT>;
+            bindings = <&kp N1 &kp N2 &kp N6 &kp N2 &kp LS(A) &kp N &kp D &kp N7 &kp AT>;
         };
 
         macro_m2: macro_m2 {
@@ -223,10 +223,10 @@
         layer_9 {
             display-name = "NAPE_MOUSE";
             bindings = <
-&trans  &trans  &trans  &trans  &trans  &trans                          &trans  &trans    &trans    &trans    &trans  &trans
-&trans  &trans  &trans  &trans  &trans  &trans                          &trans  &mkp MB1  &mkp MB3  &mkp MB2  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &trans    &trans    &trans    &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &mkp MB1  &mkp MB3  &mkp MB2  &trans  &trans
 &trans  &trans  &trans  &trans  &trans  &trans  &kp C_MUTE  &mkp MB3  &trans  &trans    &trans    &trans    &trans  &trans
-&trans  &trans  &trans  &trans  &trans  &trans                          &trans  &trans    &trans    &trans    &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &trans    &trans    &trans    &trans  &trans
             >;
 
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &scroll_encoder>;
