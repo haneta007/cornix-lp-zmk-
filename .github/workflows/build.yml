@@ -2,6 +2,8 @@ name: Build ZMK firmware
 on:
   workflow_dispatch:
   push:
+    branches:
+      - "**"
     paths:
       - ".github/workflows/build.yml"
       - "boards/**"
@@ -14,8 +16,6 @@ on:
       - "CMakeLists.txt"
       - "zephyr/module.yml"
       - "dts/**"
-    tags-ignore:
-      - "*"
 
 jobs:
   validate-baseline:
