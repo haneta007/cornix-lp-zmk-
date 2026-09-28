@@ -18,13 +18,13 @@ include:
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: studio-rpc-usb-uart nrf52840-nosd
-    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap
     artifact-name: cornix_prospector_nape_bridge_nosd
 
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: studio-rpc-usb-uart nrf52840-nosd
-    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_debug.conf
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_debug.conf
     artifact-name: cornix_prospector_nape_bridge_debug_nosd
 
   # USB CDC log capture without a hardware RTT probe. Studio's UART endpoint
@@ -32,7 +32,7 @@ include:
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: zmk-usb-logging nrf52840-nosd
-    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_usb_logging.conf
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_usb_logging.conf
     artifact-name: cornix_prospector_nape_bridge_usb_log_nosd
 
   # One-shot cleanup image: after both Cornix splits are ready, remove only
@@ -40,7 +40,7 @@ include:
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: zmk-usb-logging nrf52840-nosd
-    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_bond_cleanup_usb.conf
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_bond_cleanup_usb.conf
     artifact-name: cornix_prospector_nape_bond_cleanup_nosd
 
   # Diagnostic variant for the known split GATT discovery race with battery
@@ -48,7 +48,7 @@ include:
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: studio-rpc-usb-uart nrf52840-nosd
-    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix_nape_bridge.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_split_stability.conf
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_split_stability.conf
     artifact-name: cornix_prospector_nape_bridge_split_stability_nosd
 
   - board: xiao_ble//zmk

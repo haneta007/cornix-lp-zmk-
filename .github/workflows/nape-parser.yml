@@ -8,7 +8,7 @@ on:
       - "boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay"
       - "boards/shields/cornix_nape_bridge/nape_layer_index.h"
       - "config/cornix.keymap"
-      - "config/cornix_nape_bridge.keymap"
+      - "build.yaml"
       - ".github/workflows/nape-parser.yml"
   pull_request:
     paths:
@@ -18,7 +18,7 @@ on:
       - "boards/shields/cornix_nape_bridge/cornix_nape_bridge.overlay"
       - "boards/shields/cornix_nape_bridge/nape_layer_index.h"
       - "config/cornix.keymap"
-      - "config/cornix_nape_bridge.keymap"
+      - "build.yaml"
       - ".github/workflows/nape-parser.yml"
 jobs:
   test:

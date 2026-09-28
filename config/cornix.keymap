@@ -208,12 +208,12 @@
         };
 
         layer_9 {
-            display-name = "Layer9";
+            display-name = "NAPE_MOUSE";
             bindings = <
-&none       &none     &none     &none      &none             &none                    &none                   &none              &none          &none       &none      &none
-&none       &none     &none     &none      &none             &none                    &none                   &none              &none          &none       &none      &none
-&none       &none     &none     &none      &none             &none      &kp C_MUTE    &mkp MB3                &none              &none          &none       &none      &none      &none
-&none       &none     &none     &none      &none             &none                    &none                   &none              &none          &none       &none      &none
+&trans      &trans    &trans    &trans     &trans            &trans                   &trans                  &trans             &trans         &trans      &trans     &trans
+&trans      &trans    &trans    &trans     &trans            &trans                   &trans                  &trans             &trans         &trans      &trans     &trans
+&trans      &trans    &trans    &trans     &trans            &trans     &kp C_MUTE    &mkp MB3                &trans             &trans         &trans      &trans     &trans     &trans
+&trans      &trans    &trans    &trans     &trans            &trans                   &trans                  &trans             &trans         &trans      &trans     &trans
             >;
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &scroll_encoder>;
         };

@@ -23,7 +23,7 @@ def main() -> None:
         encoding="utf-8"
     )
     base = (ROOT / "config/cornix.keymap").read_text(encoding="utf-8")
-    bridge = (ROOT / "config/cornix_nape_bridge.keymap").read_text(encoding="utf-8")
+    build = (ROOT / "build.yaml").read_text(encoding="utf-8")
 
     layer_indices = re.findall(r"(?m)^\s*#define\s+NAPE_MOUSE_LAYER_INDEX\s+(\d+)\s*$", header)
     timeouts = re.findall(r"(?m)^\s*#define\s+NAPE_MOUSE_LAYER_TIMEOUT_MS\s+(\d+)\s*$", header)
@@ -32,14 +32,19 @@ def main() -> None:
     require("<&zip_temp_layer NAPE_MOUSE_LAYER_INDEX NAPE_MOUSE_LAYER_TIMEOUT_MS>" in overlay,
             "overlay must use the shared layer and timeout definitions")
 
-    base_layers = re.findall(r'(?m)^\s*display-name\s*=\s*"[^"]+"\s*;', base)
-    bridge_layers = re.findall(r"(?m)^\s*([A-Za-z_][A-Za-z0-9_-]*_layer)\s*\{", bridge)
-    require(bridge_layers == ["nape_mouse_layer"], "bridge keymap must append one Nape layer")
-    require('display-name = "NAPE_MOUSE"' in bridge, "appended layer must be named NAPE_MOUSE")
-    require(int(layer_indices[0]) == len(base_layers),
-            f"NAPE_MOUSE index is {layer_indices[0]}, expected {len(base_layers)} after base layers")
+    base_layers = re.findall(r'(?m)^\s*display-name\s*=\s*"([^"]+)"\s*;', base)
+    require(len(base_layers) == 10, f"expected ten layers, found {len(base_layers)}")
+    require(base_layers[9] == "NAPE_MOUSE", "existing layer 9 must be named NAPE_MOUSE")
+    require(int(layer_indices[0]) == 9,
+            f"NAPE_MOUSE index is {layer_indices[0]}, expected existing layer 9")
+    require("config/cornix_nape_bridge.keymap" not in build,
+            "Nape builds must not use the old keymap that appends a layer")
+    nape_builds = build.count("shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge")
+    require(nape_builds > 0, "Nape build variants are missing")
+    require(build.count("-DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap") == nape_builds,
+            "all Nape build variants must use the editor-visible keymap")
 
-    print(f"Nape temporary layer index: PASS (index {layer_indices[0]}, timeout {timeouts[0]} ms)")
+    print(f"Nape temporary layer index: PASS (NAPE_MOUSE index 9, timeout {timeouts[0]} ms)")
 
 
 if __name__ == "__main__":

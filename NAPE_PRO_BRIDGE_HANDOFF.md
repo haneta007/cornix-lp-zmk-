@@ -22,7 +22,7 @@ Nape Report notification → HID Report Map parser → Zephyr virtual input
                                                 NAPE_MOUSE / 700 ms
 ```
 
-Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。移動X/Yのみ専用input listenerへ通し、ZMK既存のTemporary Layer Input Processor `zip_temp_layer` がレイヤー10を有効化し、最後の移動から700ms後に解除する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。既存の手動レイヤーには触れない。
+Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。移動X/Yのみ専用input listenerへ通し、ZMK既存のTemporary Layer Input Processor `zip_temp_layer` が既存のレイヤー9（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。既存の手動レイヤーには触れない。
 
 Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、予備1）と `CONFIG_BT_MAX_PAIRED=8` を使う。通常ProspectorとCornixの設定は変更しない。split peripheral数は2のままで、Napeをsplit peripheralには数えない。ZMKでは `ZMK_SPLIT_BLE` が `ZMK_BLE` に依存するため、このvariantでもZMK BLE機能全体は無効化できない。PC出力はUSBを使い、ZMK BLE側の既存split動作を保つ。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。未発見時と切断時は最大32秒までの指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
 
@@ -31,14 +31,14 @@ Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、�
 | 範囲 | 内容 |
 | --- | --- |
 | `build.yaml`, `build-baseline.yaml` | Nape Prospector/Cornix buildと、別archiveに出す従来名のProspector rollback buildを分離 |
-| `config-baseline/west.yml`, `config-baseline/cornix.keymap` | dev時点の依存SHAとkeymapを使うrollback build設定。keymapは現行baseと一致するCI check付き |
+| `config-baseline/west.yml`, `config-baseline/cornix.keymap` | dev時点の依存SHAとkeymapを使うrollback build設定。keymapの固定SHA256をCIで確認 |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | Nape Bridgeを専用shieldだけでビルド |
 | `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input 2台、listener、700ms processor、BLE設定 |
-| `config/cornix_nape_bridge.keymap` | 既存keymapを取り込み、全キーtransparentの `NAPE_MOUSE` layerを末尾へ追加 |
+| `config/cornix.keymap` | 既存のLayer9を`NAPE_MOUSE`と表示し、Keymap Editorから編集可能にする。未割当キーはtransparent |
 | `config/nape_split_stability.conf` | ZMK #3156の診断用に、Prospector側のsplit battery fetchingを無効化 |
 | `nape_bridge/bridge.c`, `hid_mouse.[ch]`, `input_queue.h` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入。4件リングキューで古い通知を落とす時は押下buttonをrelease |
 | `nape_bridge/tests/`, `.github/workflows/nape-parser.yml` | Report IDあり/なし、X/Y、wheel、buttons、異常長、queue overflowを検証。layer indexも検証 |
-| `.github/workflows/build.yml` | Nape版とbaseline版を別archiveでbuildし、ZMK build workflowは解決済みcommitへ固定 |
+| `.github/workflows/build.yml` | Nape版とbaseline版を別archiveでbuildし、旧keymapの固定SHA256を検査。ZMK build workflowは解決済みcommitへ固定 |
 
 専用ZMK fork `haneta007/zmk` の `feat/nape-pro-ble-bridge` はsplit scanの調停とsplit以外の接続の除外だけを追加した。Prospector module `haneta007/prospector---Zmk-module` の同名ブランチはNape接続をsplit画面状態へ混ぜない変更だけを含む。巨大なZephyr forkは作っていない。
 
@@ -72,6 +72,12 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 
 新しいビルドのcommitは `config/west.yml` に固定した。ベースラインのZMKは `9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0`、Zephyrは `10ba6d0cb38bc3d258775d27982f707599320085`、Prospector moduleは `ed98221f3b52b7066dbb10ba3af8a29150b93a5a`。依存を浮動の `main` のまま更新していない。
 
+## Keymap EditorでNAPE_MOUSEを編集
+
+GitHub連携のKeymap Editorで `haneta007/cornix-lp-zmk-` の `feat/nape-pro-ble-bridge` ブランチを選び、`config/cornix.keymap` を開く。番号9（0始まり、10番目）の `NAPE_MOUSE` が編集対象。番号0〜8は残し、Nape版Prospectorはこのファイルを直接ビルドする。Keymap Editorで保存した後は、そのcommitの `firmware` artifactにある `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ手動で書く。Cornix左右は再書き込み不要。
+
+`NAPE_MOUSE` の未割当キーは下のレイヤーを通す。既存のミュート、中クリック、エンコーダー設定は初期値として保持した。Keymap Editorが `dev` ブランチを表示している場合、この `NAPE_MOUSE` はまだ表示されない。旧UF2へ戻す場合は、冒頭のhash確認済みrollback UF2を使う。
+
 ## Nape Proのペアリング
 
 1. ProspectorのUSBをPCへ接続し、Cornix LeftとRightが両方接続されるまで待つ。
@@ -98,7 +104,7 @@ GitHubのfeature branchで **Build ZMK firmware** workflowを実行する。成�
 3. Prospectorを起動し、Cornix Leftを接続して入力を試す。次にRightを接続して両側を試す。
 4. 入力が戻ればsplit GATT discovery競合の可能性が高い。戻らなければこの原因と断定せず、RTT debug logで `Found position state characteristic` と `[SUBSCRIBED]` を確認する。
 
-この文書作成時点では**Nape Pro実機のReport Map取得・実機ペアリング・PCカーソル・画面の表示は未検証**。CIはコードとUSB HID構成のコンパイル検証であり、実機での成功を意味しない。
+この診断版を追加した時点ではNape Proの実機動作は未検証だった。その後の2026-09-26のユーザー実機報告では、接続、PCカーソル、wheel/button、画面のレイヤー切替と約700ms後の復帰を確認している。今回のKeymap Editor対応後のUF2は、書き込みと実機再確認が必要。
 
 ## ログとトラブルシューティング
 
@@ -164,21 +170,21 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - `candidate found` が出ない：NapeのBTモード、ペアリング点滅、広告名を確認する。必要なら `CONFIG_ZMK_NAPE_NAME` を変更する。
 - `security established` が出ない：Napeの別Bluetoothチャンネルを試し、古い相手とのbond状態を確認する。Cornixのbondを不用意に一括消去しない。
 - `report map read` の後に購読できない：デバッグ版でReport MapとReport Referenceを採取し、parserの対応範囲を確認する。実機descriptorを推測で固定しない。
-- ポインタは動くがレイヤーが変わらない：`config/cornix_nape_bridge.keymap`が選択され、ProspectorにNape版UF2を書いたか確認する。
+- ポインタは動くがレイヤーが変わらない：Nape版buildが`config/cornix.keymap`を使い、ProspectorにNape版UF2を書いたか確認する。
 - 入力が詰まる：`NAPE: input queue overflow`、RAM使用量、BLE接続の切断ログを確認する。queueは4要素で、overflow時は最新側を残す。
 - Prospector画面でCornix左右が接続済みなのにキー入力できない：ZMKの複数split peripheralとbattery fetching併用時に、接続表示だけ先に出てposition-stateのGATT購読が欠ける既知の競合がある。診断版で回避する。通常版でのみ再発する場合はこの競合の可能性が高いが、実機ログでの確認は別途必要。
 
 ## 調整箇所と既知の制限
 
-- タイムアウトとlayer indexは `boards/shields/cornix_nape_bridge/nape_layer_index.h` の `NAPE_MOUSE_LAYER_TIMEOUT_MS`（初期値700）と `NAPE_MOUSE_LAYER_INDEX`（初期値10）で変更する。overlayとbase keymapの並びをPython検証し、layerずれをCIで検出する。
-- `NAPE_MOUSE`は現時点で全キーtransparent。クリックはNape本体のボタンから送る。キー割当を追加する場合は `config/cornix_nape_bridge.keymap` の1レイヤーにまとめる。
+- タイムアウトとlayer indexは `boards/shields/cornix_nape_bridge/nape_layer_index.h` の `NAPE_MOUSE_LAYER_TIMEOUT_MS`（初期値700）と `NAPE_MOUSE_LAYER_INDEX`（初期値9）で変更する。CIは共通keymapの番号9が`NAPE_MOUSE`であることを検査する。
+- `NAPE_MOUSE`の未割当キーはtransparent。既存のミュート、中クリック、エンコーダー設定は保持した。キー割当はKeymap Editorでfeature branchの`config/cornix.keymap`を開いて編集する。クリックはNape本体のボタンからも送る。
 - parserは相対X/Y、wheel、水平wheel、8個までのButton fieldを扱う。ZMK USB mouseへ送るボタンは先頭5個。複雑なHID Report Map、64バイトを超える1通知、512バイトを超えるReport Map、Boot Mouseだけの機器は未対応。
 - Nape実機のReport Map raw dumpは保存されていない。ユーザー実機でX/Y・wheel・button転送は動作確認済みだが、descriptorの内容や他機種への汎用性は未確認。未知のReportは通常版でUSBへ転送しない。
 - 最終CIのリンク時RAMは通常版 `256770 / 262144` バイト（97.95%、残り5374バイト）、デバッグ版 `259714 / 262144` バイト（99.07%、残り2430バイト）。旧Prospectorのベースラインは `252730 / 262144` バイト（96.41%）。これは静的配置と設定済みスタックの値であり、BLE 3接続時の実際のスタック余裕や連続稼働は未測定。特にデバッグ版は余裕が小さいため短時間のRTT調査用とし、通常運用は通常版を使う。
 - 2026-09-27のqueue/connection pool縮小後のRAM値は、更新コードをcompile/linkするまでは不明。上記RAM値は縮小前の計測結果。目標の95%未満へ下がったかはActions build後に再確認する。
 - Bluetooth認証方式とレポート内容はNape本体の実機・ファーム版に依存する。実機で不適合が判明した場合は、HEX dumpを根拠に小型parserへ限定的に対応を追加する。
 
-## 2026-09-27 保守差分の確認状況
+## 2026-09-27 保守差分の確認状況（レイヤー変更前）
 
 - レイヤーindex検証はローカルで成功（`NAPE_MOUSE` index 10、timeout 700 ms）。workflowとmanifest 5ファイルのYAML parseも成功。
 - [Nape HID parser run 36298536850](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36298536850) が成功。C11 `-Wall -Wextra -Werror` + ASan/UBSanでparserとqueue overflow/disconnect release testを実行し、layer index検証も通過。
