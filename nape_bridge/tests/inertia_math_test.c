@@ -65,7 +65,7 @@ static void test_queued_scroll_epoch_and_signed_delta(void) {
     assert(nape_inertia_scroll_event_delta(negative) == -3);
     assert(!nape_inertia_scroll_event_is_current(positive, 43));
     assert(nape_inertia_scroll_event_is_current(
-        nape_inertia_pack_scroll_event(NAPE_SCROLL_INERTIA_EVENT_EPOCH_MASK + 1, 1), 1));
+        nape_inertia_pack_scroll_event(NAPE_SCROLL_INERTIA_EVENT_EPOCH_MASK + 1, 1), 0));
 }
 
 int main(void) {
