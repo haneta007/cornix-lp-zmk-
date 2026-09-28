@@ -209,12 +209,12 @@
         };
 
         layer_8 {
-            display-name = "Layer8";
+            display-name = "NAPE_SCROLL";
             bindings = <
-&none  &none  &none  &none  &none  &none                        &none  &none  &none  &none  &none  &none
-&none  &none  &none  &none  &none  &none                        &none  &none  &none  &none  &none  &none
-&none  &none  &none  &none  &none  &none  &kp C_MUTE  &mkp MB3  &none  &none  &none  &none  &none  &none
-&none  &none  &none  &none  &none  &none                        &none  &none  &none  &none  &none  &none
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &trans  &trans  &trans  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &trans  &trans  &trans  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+&trans  &trans  &trans  &trans  &trans  &trans                        &trans  &trans  &trans  &trans  &trans  &trans
             >;
 
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &scroll_encoder>;

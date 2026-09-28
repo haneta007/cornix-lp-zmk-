@@ -16,6 +16,13 @@
         compatible = "zmk,input-listener";
         device = <&nape_motion>;
         input-processors = <&zip_temp_layer NAPE_MOUSE_LAYER_INDEX NAPE_MOUSE_LAYER_TIMEOUT_MS>;
+
+        nape_scroll_mode {
+            layers = <NAPE_SCROLL_LAYER_INDEX>;
+            input-processors =
+                <&zip_xy_to_scroll_mapper>,
+                <&zip_scroll_scaler NAPE_SCROLL_SCALER_NUMERATOR NAPE_SCROLL_SCALER_DENOMINATOR>;
+        };
     };
 
     nape_controls_listener {

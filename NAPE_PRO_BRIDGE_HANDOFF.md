@@ -84,6 +84,16 @@ GitHub連携のKeymap Editorで `haneta007/cornix-lp-zmk-` の `feat/nape-pro-bl
 
 `NAPE_MOUSE` の未割当キーは下のレイヤーを通す。既存のミュート、中クリック、エンコーダー設定と、リモート側の最新keymapで追加された左・中・右クリックを保持した。Keymap Editorが `dev` ブランチを表示している場合、この `NAPE_MOUSE` はまだ表示されない。旧UF2へ戻す場合は、冒頭のhash確認済みrollback UF2を使う。
 
+## Cornixキー押下中のNapeスクロール
+
+`feat/nape-scroll-modifier` では、既存Layer 8を `NAPE_SCROLL` として使う。NapeのXYはProspectorの `nape_motion_listener` で、通常時は従来どおり `NAPE_MOUSE` の700ms一時切替を通り、Layer 8が有効な間はZMK標準のXY-to-scroll mapperとscroll scalerを通ってUSBホイールとしてPCへ出る。Layer 8のoverrideに `process-next` は付けず、スクロール中に親側の `zip_temp_layer` を呼ばない。ボタンと物理ホイールは従来の `nape_controls_listener` の経路を使う。
+
+Keymap EditorではGitHub repositoryの `feat/nape-scroll-modifier` ブランチにある `config/cornix.keymap` を開き、希望するCornixキーへ `&mo 8`（Layer 8 hold相当）を割り当てる。Layer 8は全キーtransparentなので通常の文字入力を通す。スクロール用キーと同じ位置は `NAPE_MOUSE` 上でもtransparentにする。現在のLayer 9で避ける位置（キー位置は0始まり）は、`19`=左クリック、`20`=中クリック、`21`=右クリック、`30`=ミュート、`31`=中クリック。
+
+初期scalerは `1/8`。倍率を変える場合は `nape_layer_index.h` の `NAPE_SCROLL_SCALER_NUMERATOR` と `NAPE_SCROLL_SCALER_DENOMINATOR` を編集する。現在のmapperは符号を変えず、Xを水平wheel、Yを垂直wheelへ送る。逆方向が必要なら同じoverlay overrideへ標準 `zip_scroll_transform` を追加し、`INPUT_TRANSFORM_X_INVERT` または `INPUT_TRANSFORM_Y_INVERT` を指定する。Nape実機のReport Map raw dumpは保管されていないため、`1/8`のスクロール速度と方向は書き込み後に確認する。
+
+ビルド後は `firmware` artifact内の `cornix_prospector_nape_bridge_nosd.uf2` をProspectorへ手動で書く。Cornix左右やNape本体への書き込みは不要。実機では通常カーソル移動、キー押下中の縦横スクロールとカーソル停止、キーを離した直後のカーソル復帰、Layer 8と9同時active時のoverride、スクロール中に700ms timerが更新されないこと、Nape buttons/物理wheel、Cornix左右の文字入力を確認する。
+
 ## Nape Proのペアリング
 
 1. ProspectorのUSBをPCへ接続し、Cornix LeftとRightが両方接続されるまで待つ。
