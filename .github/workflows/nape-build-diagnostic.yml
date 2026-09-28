@@ -23,6 +23,7 @@ jobs:
           echo "BUILD_DIR=$(mktemp -d)" >> "$GITHUB_ENV"
       - name: Initialize pinned west workspace
         shell: bash
+        working-directory: ${{ env.BASE_DIR }}
         run: |
           west init -l "${BASE_DIR}/config"
           west update --fetch-opt=--filter=tree:0
@@ -30,6 +31,7 @@ jobs:
           west list -f '{name} {revision}'
       - name: Build one normal Nape Prospector variant and expose diagnostics
         shell: bash
+        working-directory: ${{ env.BASE_DIR }}
         run: |
           set +e
           west build -s zmk/app -d "${BUILD_DIR}" -b 'xiao_ble//zmk' \
