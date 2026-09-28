@@ -24,9 +24,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/nape-memory-build.log") 2>&1
           root="$GITHUB_WORKSPACE"
           west_dir="$root/west"
           build_dir="$RUNNER_TEMP/nape-memory-build"
+          size_tool="$(command -v arm-zephyr-eabi-size || true)"
+          if [ -z "$size_tool" ]; then
+            size_tool="$(find /opt /usr/local -type f -name arm-zephyr-eabi-size -print -quit 2>/dev/null || true)"
+          fi
+          if [ -z "$size_tool" ]; then
+            echo "Could not locate arm-zephyr-eabi-size" >&2
+            exit 127
+          fi
           mkdir -p "$west_dir/config" "$build_dir"
           cp -R "$root/current/config/." "$west_dir/config/"
           cd "$west_dir"
@@ -47,7 +56,7 @@ jobs:
               -DSHIELD='cornix_dongle_adapter prospector_adapter cornix_nape_bridge' \
               -DKEYMAP_FILE="$source_root/config/cornix.keymap" \
               -DEXTRA_CONF_FILE="$source_root/config/nape_fixed_brightness.conf"
-            size_output=$(arm-zephyr-eabi-size "$build_dir/$variant/zephyr/zephyr.elf")
+            size_output=$("$size_tool" "$build_dir/$variant/zephyr/zephyr.elf")
             printf '%s\n' "$size_output"
             read -r text data bss _ <<< "$(printf '%s\n' "$size_output" | tail -n 1)"
             ram=$((data + bss))
@@ -64,3 +73,10 @@ jobs:
               echo "| $variant | $text | $data | $bss | $flash | $ram |"
             done < "$RUNNER_TEMP/nape-memory-results.txt"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save diagnostic build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nape-memory-build-log
+          path: ${{ runner.temp }}/nape-memory-build.log
+
