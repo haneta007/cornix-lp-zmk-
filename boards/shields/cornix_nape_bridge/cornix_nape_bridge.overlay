@@ -31,7 +31,6 @@
         nape_scroll_mode {
             layers = <NAPE_SCROLL_LAYER_INDEX>;
             input-processors =
-                <&nape_scroll_inertia>,
                 <&zip_xy_to_scroll_mapper>,
                 <&zip_scroll_scaler NAPE_SCROLL_SCALER_NUMERATOR NAPE_SCROLL_SCALER_DENOMINATOR>;
         };

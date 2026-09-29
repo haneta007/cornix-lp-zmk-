@@ -16,6 +16,16 @@ static void test_velocity_sampling_and_threshold(void) {
            NAPE_SCROLL_INERTIA_MAX_COUNTS_PER_TICK * NAPE_SCROLL_INERTIA_VELOCITY_SCALE);
 }
 
+static void test_velocity_uses_elapsed_report_time(void) {
+    const int32_t movement = 8 * NAPE_SCROLL_INERTIA_VELOCITY_SCALE;
+
+    assert(nape_inertia_sample_velocity(8, 16, true) == movement);
+    assert(nape_inertia_sample_velocity(8, 32, true) == movement / 2);
+    assert(nape_inertia_sample_velocity(8, 0, true) == movement);
+    assert(nape_inertia_sample_velocity(8, NAPE_SCROLL_INERTIA_MAX_SAMPLE_GAP_MS + 1, true) ==
+           movement);
+}
+
 static void test_velocity_smoothing_and_reversal(void) {
     const int32_t sample = 16 * NAPE_SCROLL_INERTIA_VELOCITY_SCALE;
     assert(nape_inertia_update_velocity(0, sample) == sample / 4);
@@ -70,6 +80,7 @@ static void test_queued_scroll_epoch_and_signed_delta(void) {
 
 int main(void) {
     test_velocity_sampling_and_threshold();
+    test_velocity_uses_elapsed_report_time();
     test_velocity_smoothing_and_reversal();
     test_positive_and_negative_decay();
     test_fractional_accumulation_and_stop();

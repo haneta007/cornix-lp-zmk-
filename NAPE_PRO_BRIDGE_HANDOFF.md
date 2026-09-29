@@ -39,7 +39,7 @@ Nape Report notification → HID Report Map parser → Zephyr virtual input
                                                 NAPE_MOUSE / Layer 6 / 700 ms
 ```
 
-Nape BLE callbackは通知を固定長キューへコピーし、system work queueでReportを解析してvirtual inputへ渡す。通常時の移動X/YはZMK既存のTemporary Layer Input Processor `zip_temp_layer` でLayer 6（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。Layer 5（`FN_SCROLL`）が有効な間は同じX/Yをscroll mapperへ通す。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。
+Nape BLE callbackは通知到着時刻とReportを固定長キューへコピーし、system work queueで接続世代を確認してから解析する。通常時の移動X/YはZMK既存のTemporary Layer Input Processor `zip_temp_layer` でLayer 6（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。Layer 5（`FN_SCROLL`）が有効な間は同じX/Yをscroll mapperへ通す。慣性速度trackerは、検証済みのReportを解析するbridge処理内でXYとBLE通知時刻を観測し、tracker stateはNape切断処理と同じbridge state mutexの下で無効化する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。
 
 Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、予備1）と `CONFIG_BT_MAX_PAIRED=8` を使う。通常ProspectorとCornixの設定は変更しない。split peripheral数は2のままで、Napeをsplit peripheralには数えない。ZMKでは `ZMK_SPLIT_BLE` が `ZMK_BLE` に依存するため、このvariantでもZMK BLE機能全体は無効化できない。PC出力はUSBを使い、ZMK BLE側の既存split動作を保つ。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。未発見時と切断時は最大32秒までの指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
 
@@ -52,9 +52,9 @@ Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、�
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | Nape Bridgeを専用shieldだけでビルド |
 | `boards/shields/cornix_nape_bridge/`, `dts/bindings/input/` | virtual input、listener、700ms processor、BLE設定 |
 | `config/cornix.keymap` | Layer 5/6/7を既存枠内でFN_SCROLL/NAPE_MOUSE/競合解消に再利用 |
-| `nape_bridge/inertia.c`, `inertia_math.h` | system workqueue上の慣性scroll、Layer 5・切断・新入力時の停止 |
+| `nape_bridge/inertia.c`, `inertia_math.h` | system workqueue上の慣性scroll、Layer 5・切断・新入力時の停止。workの予約/取消しをstate lockで直列化 |
 | `config/nape_split_stability.conf` | ZMK #3156の診断用に、Prospector側のsplit battery fetchingを無効化 |
-| `nape_bridge/bridge.c`, `hid_mouse.[ch]`, `input_queue.h` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入。4件リングキューで古い通知を落とす時は押下buttonをrelease |
+| `nape_bridge/bridge.c`, `hid_mouse.[ch]`, `input_queue.h` | scan、bonding/security、HOGP GATT discovery、Report Map解析、input注入、慣性trackerへの通知時刻引き渡し。通知時刻を保持するため4件リングキューの静的RAMが合計16 byte増える |
 | `nape_bridge/tests/`, `.github/workflows/nape-parser.yml` | Report IDあり/なし、X/Y、wheel、buttons、異常長、queue overflowを検証。layer indexも検証 |
 | `.github/workflows/build.yml` | Nape版とbaseline版を別archiveでbuildし、旧keymapの固定SHA256を検査。ZMK build workflowは解決済みcommitへ固定 |
 
@@ -108,11 +108,11 @@ Base Layerの無変換とEnterにある既存layer-tapは、タップすると�
 
 固定ZMK commit `edafb3b058445329d4cbc226621eb1d37529480c` の `app/src/keymap.c` を確認した。既定のレイヤー順では高い番号が先に照合されるため、Layer 7がLayer 6より優先される。Layer 7はLayer 5と6が両方activeのときだけ条件付きで有効になり、Layer 6上のマウスボタンと競合するkey position 19/20/21をFNの `N5` / `N6` / `KP_PLUS` に置き換える。他のLayer 7位置はtransparentなのでLayer 5/6の動作を通す。Layer 6の30/31はFN Layer 5と同じミュート/中クリック割当。なおProspector設定ではZMK Studioのlayer reorderingが有効で、実機で優先順を変更している場合はこの既定順と異なる可能性がある。今回の動作確認ではStudio上のレイヤー並べ替えを行わず、必要なら既定順へ戻して確認する。
 
-Layer 5のkeymap処理とNape scroll入力は別経路で同時に動く。通常X/Yは `nape_motion_listener` のLayer 5 overrideで、慣性tracker → `zip_xy_to_scroll_mapper` → `zip_scroll_scaler 1/8` の順にUSB HID scrollへ送る。overrideに `process-next` は付けず、親側のLayer 6 700ms `zip_temp_layer` を呼ばない。ボタンと物理wheelは従来の別 `nape_controls_listener` を使う。
+Layer 5のkeymap処理とNape scroll入力は別経路で同時に動く。解析済みの生XYはbridge内のtrackerがBLE通知時刻で速度推定に使い、`nape_motion_listener` のLayer 5 overrideは従来どおり `zip_xy_to_scroll_mapper` → `zip_scroll_scaler 1/8` の順にUSB HID scrollへ送る。overrideに `process-next` は付けず、親側のLayer 6 700ms `zip_temp_layer` を呼ばない。ボタンと物理wheelは従来の別 `nape_controls_listener` を使う。
 
-慣性trackerはLayer 5中のNape XYだけを観測し、通常のmapper/scaler経路を維持する。40ms入力停止後、速いフリックでのみ慣性を始め、system workqueue上のdelayable workを16ms周期で動かす。速度はQ8固定小数点EMA `(old×3 + sample)/4`、方向反転時は旧速度を捨て、tickごとに230/256へ減衰する。最低開始速度は8 raw count/tick、停止thresholdは1 count/tick、最大継続は1200ms。X/Yは別速度・端数を持ち、既存1/8 scalerを慣性scrollにも一度だけ適用する。数値は `nape_bridge/inertia_math.h` に集約。
+慣性trackerはLayer 5中のNape XYだけを観測し、通常のmapper/scaler経路には介入しない。速度サンプルはBLE通知到着時刻から求め、開始待ち時間はbridge処理時刻から40msとする。速いフリックでのみ慣性を始め、system workqueue上のdelayable workを16ms周期で動かす。速度はQ8固定小数点EMA `(old×3 + sample)/4`、方向反転時は旧速度を捨て、tickごとに230/256へ減衰する。最低開始速度は8 raw count/tick、停止thresholdは1 count/tick、最大継続は1200ms。X/Yは別速度・端数を持ち、既存1/8 scalerを慣性scrollにも一度だけ適用する。数値は `nape_bridge/inertia_math.h` に集約。
 
-慣性scrollは専用virtual input deviceから直接wheel/hwheelを出すため、通常のXY mapperやLayer 6 temporary-layer timerに入り直さない。入力スレッドへ遅れて届いた古い合成イベントは世代タグで破棄する。Layer 5がOFF、Napeが切断、または新しいXYが来たとき速度・端数を消し、保留中のイベントも無効化する。ZMK標準scroll mapperの符号は維持し、Xはhorizontal wheel、Yはvertical wheel。方向を逆にする場合は標準transform processorをmapperの前に加える。
+慣性scrollは専用virtual input deviceから直接wheel/hwheelを出すため、通常のXY mapperやLayer 6 temporary-layer timerに入り直さない。横・縦イベントはそれぞれ同期して送るため、斜めscroll中に片方のqueue送信が失敗しても未確定軸データを次回へ持ち越さない。実入力は解析後、motion queueへ渡す前に慣性世代を更新する。入力スレッドへ遅れて届いた古い合成イベントは世代タグで破棄する。Layer 5がOFF、Napeが切断、または新しいXYが来たとき速度・端数を消し、保留中のイベントも無効化する。Layer stateとwork予約/取消しのraceはstate lockで直列化する。ZMK標準scroll mapperの符号は維持し、Xはhorizontal wheel、Yはvertical wheel。方向を逆にする場合は標準transform processorをmapperの前に加える。
 
 Layer 5はFNキーのholdでもscroll modifierでもあるため、同じhold操作を使う。必要ならKeymap Editorで追加の任意キーへ `&mo 5` を割り当てられる。Layer 8/9はinactive legacy slotsなので新しい設定では使わない。
 

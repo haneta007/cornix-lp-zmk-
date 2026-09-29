@@ -25,13 +25,11 @@
 
 struct nape_inertia_state {
     struct k_spinlock lock;
-    int32_t pending_x;
-    int32_t pending_y;
     int32_t estimate_x_q8;
     int32_t estimate_y_q8;
     struct nape_inertia_axis x;
     struct nape_inertia_axis y;
-    int64_t last_sample_ms;
+    uint32_t last_sample_ms;
     int64_t last_input_ms;
     int64_t started_ms;
     bool has_previous_sample;
@@ -52,8 +50,6 @@ static zmk_keymap_layer_id_t scroll_layer_id(void) {
 static bool scroll_layer_active(void) { return zmk_keymap_layer_active(scroll_layer_id()); }
 
 static void reset_locked(void) {
-    inertia_state.pending_x = 0;
-    inertia_state.pending_y = 0;
     inertia_state.estimate_x_q8 = 0;
     inertia_state.estimate_y_q8 = 0;
     nape_inertia_axis_reset(&inertia_state.x);
@@ -66,37 +62,26 @@ static void reset_locked(void) {
 }
 
 void nape_inertia_reset(void) {
+    k_spinlock_key_t key = k_spin_lock(&inertia_state.lock);
     atomic_inc(&inertia_epoch);
     atomic_clear(&inertia_armed);
-    k_spinlock_key_t key = k_spin_lock(&inertia_state.lock);
     reset_locked();
-    k_spin_unlock(&inertia_state.lock, key);
     k_work_cancel_delayable(&inertia_work);
+    k_spin_unlock(&inertia_state.lock, key);
 }
 
 static void reset_if_epoch(uint32_t expected_epoch) {
-    bool reset = false;
     k_spinlock_key_t key = k_spin_lock(&inertia_state.lock);
     if ((uint32_t)atomic_get(&inertia_epoch) == expected_epoch) {
         atomic_inc(&inertia_epoch);
         atomic_clear(&inertia_armed);
         reset_locked();
-        reset = true;
-    }
-    k_spin_unlock(&inertia_state.lock, key);
-    if (reset) {
         k_work_cancel_delayable(&inertia_work);
     }
+    k_spin_unlock(&inertia_state.lock, key);
 }
 
-static int32_t saturated_add_delta(int32_t current, int32_t delta) {
-    delta = CLAMP(delta, -NAPE_SCROLL_INERTIA_MAX_FRAME_DELTA,
-                  NAPE_SCROLL_INERTIA_MAX_FRAME_DELTA);
-    return CLAMP(current + delta, -NAPE_SCROLL_INERTIA_MAX_FRAME_DELTA,
-                 NAPE_SCROLL_INERTIA_MAX_FRAME_DELTA);
-}
-
-static void track_motion(struct input_event *event) {
+void nape_inertia_track(int32_t dx, int32_t dy, uint32_t received_ms) {
     if (!scroll_layer_active()) {
         if (atomic_get(&inertia_armed)) {
             nape_inertia_reset();
@@ -104,61 +89,43 @@ static void track_motion(struct input_event *event) {
         return;
     }
 
-    int64_t now_ms = k_uptime_get();
-    bool schedule = false;
+    const int64_t now_ms = k_uptime_get();
     k_spinlock_key_t key = k_spin_lock(&inertia_state.lock);
 
-    if (event->type == INPUT_EV_REL) {
-        if (event->code == INPUT_REL_X) {
-            inertia_state.pending_x =
-                saturated_add_delta(inertia_state.pending_x, event->value);
-        } else if (event->code == INPUT_REL_Y) {
-            inertia_state.pending_y =
-                saturated_add_delta(inertia_state.pending_y, event->value);
-        }
+    if (!scroll_layer_active()) {
+        atomic_inc(&inertia_epoch);
+        atomic_clear(&inertia_armed);
+        reset_locked();
+        k_work_cancel_delayable(&inertia_work);
+        k_spin_unlock(&inertia_state.lock, key);
+        return;
     }
 
-    if (event->sync) {
-        const int32_t dx = inertia_state.pending_x;
-        const int32_t dy = inertia_state.pending_y;
-        inertia_state.pending_x = 0;
-        inertia_state.pending_y = 0;
-
-        if (dx != 0 || dy != 0) {
-            uint32_t elapsed_ms = 0;
-            if (inertia_state.has_previous_sample) {
-                const int64_t elapsed = now_ms - inertia_state.last_sample_ms;
-                if (elapsed > UINT32_MAX) {
-                    elapsed_ms = UINT32_MAX;
-                } else if (elapsed > 0) {
-                    elapsed_ms = (uint32_t)elapsed;
-                }
-            }
-            const int32_t sample_x_q8 = nape_inertia_sample_velocity(
-                dx, elapsed_ms, inertia_state.has_previous_sample);
-            const int32_t sample_y_q8 = nape_inertia_sample_velocity(
-                dy, elapsed_ms, inertia_state.has_previous_sample);
-            inertia_state.estimate_x_q8 =
-                nape_inertia_update_velocity(inertia_state.estimate_x_q8, sample_x_q8);
-            inertia_state.estimate_y_q8 =
-                nape_inertia_update_velocity(inertia_state.estimate_y_q8, sample_y_q8);
-            inertia_state.last_sample_ms = now_ms;
-            inertia_state.last_input_ms = now_ms;
-            inertia_state.has_previous_sample = true;
-            inertia_state.running = false;
-            inertia_state.started_ms = 0;
-            nape_inertia_axis_reset(&inertia_state.x);
-            nape_inertia_axis_reset(&inertia_state.y);
-            atomic_inc(&inertia_epoch);
-            atomic_set(&inertia_armed, 1);
-            schedule = true;
-        }
-    }
-    k_spin_unlock(&inertia_state.lock, key);
-
-    if (schedule) {
+    if (dx != 0 || dy != 0) {
+        const uint32_t elapsed_ms = inertia_state.has_previous_sample
+                                       ? received_ms - inertia_state.last_sample_ms
+                                       : 0;
+        const int32_t sample_x_q8 = nape_inertia_sample_velocity(
+            dx, elapsed_ms, inertia_state.has_previous_sample);
+        const int32_t sample_y_q8 = nape_inertia_sample_velocity(
+            dy, elapsed_ms, inertia_state.has_previous_sample);
+        inertia_state.estimate_x_q8 =
+            nape_inertia_update_velocity(inertia_state.estimate_x_q8, sample_x_q8);
+        inertia_state.estimate_y_q8 =
+            nape_inertia_update_velocity(inertia_state.estimate_y_q8, sample_y_q8);
+        inertia_state.last_sample_ms = received_ms;
+        inertia_state.last_input_ms = now_ms;
+        inertia_state.has_previous_sample = true;
+        inertia_state.running = false;
+        inertia_state.started_ms = 0;
+        nape_inertia_axis_reset(&inertia_state.x);
+        nape_inertia_axis_reset(&inertia_state.y);
+        atomic_inc(&inertia_epoch);
+        atomic_set(&inertia_armed, 1);
+        /* Serialize rescheduling with reset/cancel under the state lock. */
         k_work_reschedule(&inertia_work, K_MSEC(NAPE_SCROLL_INERTIA_START_DELAY_MS));
     }
+    k_spin_unlock(&inertia_state.lock, key);
 }
 
 static int inertia_processor_handle_event(const struct device *dev, struct input_event *event,
@@ -181,9 +148,6 @@ static int inertia_processor_handle_event(const struct device *dev, struct input
         return ZMK_INPUT_PROC_CONTINUE;
     }
 
-    if (event->dev == NAPE_INPUT_NODE(nape_motion)) {
-        track_motion(event);
-    }
     return ZMK_INPUT_PROC_CONTINUE;
 }
 
@@ -201,7 +165,7 @@ static bool emit_scroll(uint32_t epoch, int32_t hwheel, int32_t wheel) {
     const struct device *dev = NAPE_INPUT_NODE(nape_inertia_scroll);
     if (hwheel != 0 && wheel != 0) {
         if (input_report_rel(dev, INPUT_REL_HWHEEL,
-                             nape_inertia_pack_scroll_event(epoch, hwheel), false, K_NO_WAIT) < 0) {
+                             nape_inertia_pack_scroll_event(epoch, hwheel), true, K_NO_WAIT) < 0) {
             return false;
         }
         if (input_report_rel(dev, INPUT_REL_WHEEL, nape_inertia_pack_scroll_event(epoch, wheel),
@@ -293,17 +257,21 @@ static void inertia_work_handler(struct k_work *work) {
     }
 
     if (!emit_scroll(epoch, hwheel, wheel)) {
+        key = k_spin_lock(&inertia_state.lock);
         if (continue_work && scroll_layer_active() && atomic_get(&inertia_armed) &&
             epoch == (uint32_t)atomic_get(&inertia_epoch)) {
             k_work_reschedule(&inertia_work, K_MSEC(next_delay_ms));
         }
+        k_spin_unlock(&inertia_state.lock, key);
         return;
     }
 
+    key = k_spin_lock(&inertia_state.lock);
     if (continue_work && scroll_layer_active() && atomic_get(&inertia_armed) &&
         epoch == (uint32_t)atomic_get(&inertia_epoch)) {
         k_work_reschedule(&inertia_work, K_MSEC(next_delay_ms));
     }
+    k_spin_unlock(&inertia_state.lock, key);
 }
 
 static int inertia_layer_listener(const zmk_event_t *event) {

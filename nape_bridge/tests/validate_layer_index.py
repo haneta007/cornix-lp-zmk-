@@ -48,6 +48,7 @@ def main() -> None:
     build = (ROOT / "build.yaml").read_text(encoding="utf-8")
     inertia = (ROOT / "nape_bridge/inertia.c").read_text(encoding="utf-8")
     bridge = (ROOT / "nape_bridge/bridge.c").read_text(encoding="utf-8")
+    input_queue = (ROOT / "nape_bridge/input_queue.h").read_text(encoding="utf-8")
 
     expected_constants = {
         "NAPE_SCROLL_LAYER_INDEX": 5,
@@ -80,8 +81,8 @@ def main() -> None:
     require(processors is not None, "scroll override processor list is missing")
     processor_entries = re.findall(r"<&([A-Za-z0-9_]+)([^>]*)>", processors.group(1))
     require([entry[0] for entry in processor_entries] == [
-        "nape_scroll_inertia", "zip_xy_to_scroll_mapper", "zip_scroll_scaler"
-    ], "scroll override must track motion, map XY, then scale")
+        "zip_xy_to_scroll_mapper", "zip_scroll_scaler"
+    ], "normal scroll must retain the standard XY mapper and scaler")
     require(processor_entries[-1][1].split() == [
         "NAPE_SCROLL_SCALER_NUMERATOR", "NAPE_SCROLL_SCALER_DENOMINATOR"
     ], "scroll override must use the shared 1/8 scaler values")
@@ -103,6 +104,80 @@ def main() -> None:
             "inertia must share the layer index header rather than duplicate the value")
     require("nape_inertia_reset();" in bridge,
             "Nape disconnect must clear inertia state")
+    require("uint32_t received_ms;" in input_queue,
+            "the fixed input queue must carry each BLE notification timestamp")
+    notify = re.search(r"(?s)static uint8_t report_notify\(.*?\n}\n", bridge)
+    require(notify is not None and ".received_ms = k_uptime_get_32()" in notify.group(0),
+            "BLE notification arrival time must be recorded before queueing")
+    disconnect = re.search(r"(?s)static void disconnected\(.*?\n}\n", bridge)
+    require(disconnect is not None, "the Nape disconnect callback is missing")
+    disconnect_body = disconnect.group(0)
+    generation_update = disconnect_body.find("bridge.generation++")
+    inertia_reset = disconnect_body.find("nape_inertia_reset();")
+    final_unlock = disconnect_body.rfind("k_mutex_unlock(&nape_state_lock)")
+    require(0 <= generation_update < inertia_reset < final_unlock,
+            "disconnect must invalidate the connection and reset inertia under the input-state mutex")
+    input_work = re.search(
+        r"(?ms)^static void input_work_handler\(struct k_work \*work\) \{(.*?)^\}", bridge
+    )
+    input_body = input_work.group(1) if input_work is not None else ""
+    input_stages = [
+        input_body.find("queued.generation != bridge.generation"),
+        input_body.find("nape_hid_parse_input"),
+        input_body.find("nape_inertia_track(parsed.x, parsed.y, queued.received_ms)"),
+        input_body.find("emit_relative(motion, INPUT_REL_X"),
+    ]
+    require(all(position >= 0 for position in input_stages) and
+            input_stages == sorted(input_stages),
+            "only parsed, generation-checked Nape XY reports may update the inertia tracker")
+    require("k_work_cancel_delayable(&inertia_work);" in inertia and
+            "k_work_reschedule(&inertia_work, K_MSEC(NAPE_SCROLL_INERTIA_START_DELAY_MS));" in inertia,
+            "reset cancellation and input rescheduling must both remain present")
+    reset = re.search(r"(?s)void nape_inertia_reset\(void\)\s*\{(.*?)\n}", inertia)
+    reset_positions = [
+        reset.group(1).find(token) if reset is not None else -1
+        for token in ("k_spin_lock", "k_work_cancel_delayable", "k_spin_unlock")
+    ]
+    require(all(position >= 0 for position in reset_positions) and
+            reset_positions == sorted(reset_positions),
+            "reset and delayed-work cancellation must be serialized by the inertia state lock")
+    track = re.search(r"(?s)void nape_inertia_track\(.*?\)\s*\{(.*?)\n}", inertia)
+    track_body = track.group(1) if track is not None else ""
+    track_schedule = [
+        track_body.find("k_spin_lock"), track_body.find("k_work_reschedule"),
+        track_body.rfind("k_spin_unlock")
+    ]
+    require(all(position >= 0 for position in track_schedule) and
+            track_schedule == sorted(track_schedule),
+            "input rescheduling must be serialized against state reset")
+    reset_epoch = re.search(r"(?s)static void reset_if_epoch\(.*?\)\s*\{(.*?)\n}", inertia)
+    reset_epoch_positions = [
+        reset_epoch.group(1).find(token) if reset_epoch is not None else -1
+        for token in ("k_spin_lock", "k_work_cancel_delayable", "k_spin_unlock")
+    ]
+    require(all(position >= 0 for position in reset_epoch_positions) and
+            reset_epoch_positions == sorted(reset_epoch_positions),
+            "epoch-guarded cancellation must be serialized by the inertia state lock")
+    work_calls = list(re.finditer(r"k_work_(?:cancel_delayable|reschedule)\s*\(", inertia))
+    work_handler = re.search(
+        r"(?ms)^static void inertia_work_handler\(struct k_work \*work\) \{(.*?)^\}", inertia
+    )
+    handler_body = work_handler.group(1) if work_handler is not None else ""
+    handler_calls = list(re.finditer(r"k_work_reschedule\s*\(", handler_body))
+    handler_calls_locked = all(
+        handler_body.rfind("k_spin_lock", 0, call.start()) >
+        handler_body.rfind("k_spin_unlock", 0, call.start()) and
+        handler_body.find("k_spin_unlock", call.end()) >= call.end()
+        for call in handler_calls
+    )
+    require(len(work_calls) == 6 and len(handler_calls) == 2 and handler_calls_locked,
+            "all inertia work scheduling/cancel paths must stay serialized by the state lock")
+    require("if (event->dev == NAPE_INPUT_NODE(nape_motion))" not in inertia,
+            "inertia sampling must not depend on asynchronously delivered motion input events")
+    two_axis_emit = re.search(r"(?s)if \(hwheel != 0 && wheel != 0\) \{(.*?)\n    \} else if", inertia)
+    require(two_axis_emit is not None and
+            len(re.findall(r"input_report_rel\(.*?true, K_NO_WAIT\)", two_axis_emit.group(1), re.S)) == 2,
+            "each axis of a diagonal inertia tick must close its input report independently")
     require(re.search(r"(?s)state->layer\s*==\s*scroll_layer_id\(\).*?!state->state", inertia) is not None,
             "releasing Layer 5 must cancel pending inertia")
     require("atomic_inc(&inertia_epoch);" in inertia and

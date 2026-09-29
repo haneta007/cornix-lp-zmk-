@@ -9,6 +9,7 @@
 
 struct nape_queued_input {
     uint32_t generation;
+    uint32_t received_ms;
     uint8_t report_id;
     uint8_t length;
     uint8_t payload[NAPE_INPUT_MAX_NOTIFICATION];

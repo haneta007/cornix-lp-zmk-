@@ -510,7 +510,9 @@ static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_para
         LOG_WRN("NAPE: oversized input report %u", length);
         return BT_GATT_ITER_CONTINUE;
     }
-    struct nape_queued_input queued = {.generation = generation, .report_id = report->id,
+    struct nape_queued_input queued = {.generation = generation,
+                                       .received_ms = k_uptime_get_32(),
+                                       .report_id = report->id,
                                        .length = (uint8_t)length};
     memcpy(queued.payload, data, length);
     k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
@@ -818,10 +820,11 @@ static void connected(struct bt_conn *conn, uint8_t err) {
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
-    if (!active_conn(conn)) return;
-    nape_inertia_reset();
-    LOG_INF("NAPE: disconnected (%u)", reason);
     k_mutex_lock(&nape_state_lock, K_FOREVER);
+    if (!conn || conn != bridge.conn) {
+        k_mutex_unlock(&nape_state_lock);
+        return;
+    }
     bridge.generation++;
     atomic_clear(&gatt_pending);
     bt_conn_unref(bridge.conn);
@@ -840,7 +843,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
     nape_input_queue_request_button_release(&nape_input_queue);
     k_spin_unlock(&nape_input_queue_lock, key);
+    /* Serialize reset against parsing and tracking the final queued report. */
+    nape_inertia_reset();
     k_mutex_unlock(&nape_state_lock);
+    LOG_INF("NAPE: disconnected (%u)", reason);
     k_work_cancel_delayable(&nape_retry_disconnect_work);
     atomic_clear(&retry_disconnect_pending);
     k_work_submit(&nape_input_work);
@@ -910,6 +916,8 @@ static void input_work_handler(struct k_work *work) {
         LOG_DBG("NAPE: input id=%u x=%d y=%d wheel=%d buttons=%02x", queued.report_id,
                 parsed.x, parsed.y, parsed.wheel, parsed.buttons);
         if (parsed.x || parsed.y) {
+            /* Invalidate pending synthetic scroll before queueing this real motion. */
+            nape_inertia_track(parsed.x, parsed.y, queued.received_ms);
             emit_relative(motion, INPUT_REL_X, parsed.x, !parsed.y);
             emit_relative(motion, INPUT_REL_Y, parsed.y, true);
         }

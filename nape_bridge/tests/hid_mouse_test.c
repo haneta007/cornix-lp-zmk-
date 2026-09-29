@@ -54,7 +54,10 @@ static void malformed(void) {
 static void input_queue_overflow_keeps_newest_and_requests_button_release(void) {
     struct nape_input_queue queue = {0};
     for (uint8_t i = 0; i < NAPE_INPUT_QUEUE_CAPACITY + 1; i++) {
-        struct nape_queued_input input = {.generation = 7, .report_id = 2, .length = 1,
+        struct nape_queued_input input = {.generation = 7,
+                                          .received_ms = 1000u + i,
+                                          .report_id = 2,
+                                          .length = 1,
                                           .payload = {i}};
         bool overflowed = nape_input_queue_push(&queue, &input);
         assert(overflowed == (i == NAPE_INPUT_QUEUE_CAPACITY));
@@ -68,6 +71,7 @@ static void input_queue_overflow_keeps_newest_and_requests_button_release(void) 
         assert(nape_input_queue_pop(&queue, &input, &release_buttons));
         assert(release_buttons == (i == 1));
         assert(input.payload[0] == i);
+        assert(input.received_ms == 1000u + i);
     }
     assert(!nape_input_queue_pop(&queue, &input, &release_buttons));
     assert(!release_buttons);
@@ -108,6 +112,21 @@ static void input_queue_disconnect_release_survives_without_pending_reports(void
     assert(!release_buttons);
 }
 
+static void input_queue_preserves_notification_timestamps(void) {
+    struct nape_input_queue queue = {0};
+    struct nape_queued_input sent = {.generation = 12, .received_ms = UINT32_MAX - 3,
+                                     .report_id = 4, .length = 2, .payload = {0xaa, 0x55}};
+    struct nape_queued_input received;
+    bool release_buttons;
+
+    assert(!nape_input_queue_push(&queue, &sent));
+    assert(nape_input_queue_pop(&queue, &received, &release_buttons));
+    assert(!release_buttons);
+    assert(received.generation == sent.generation);
+    assert(received.received_ms == sent.received_ms);
+    assert(received.payload[0] == sent.payload[0] && received.payload[1] == sent.payload[1]);
+}
+
 int main(void) {
     without_report_id();
     with_report_id();
@@ -115,6 +134,7 @@ int main(void) {
     input_queue_overflow_keeps_newest_and_requests_button_release();
     input_queue_overflow_after_wraparound();
     input_queue_disconnect_release_survives_without_pending_reports();
+    input_queue_preserves_notification_timestamps();
     puts("Nape HID mouse parser: PASS");
     return 0;
 }
