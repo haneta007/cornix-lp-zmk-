@@ -124,12 +124,22 @@ def main() -> None:
     input_stages = [
         input_body.find("queued.generation != bridge.generation"),
         input_body.find("nape_hid_parse_input"),
-        input_body.find("nape_inertia_track(parsed.x, parsed.y, queued.received_ms)"),
-        input_body.find("emit_relative(motion, INPUT_REL_X"),
+        input_body.find("nape_inertia_prepare_motion(parsed.x, parsed.y, queued.received_ms"),
+        input_body.find("emit_relative(motion, INPUT_REL_X, motion_x"),
     ]
     require(all(position >= 0 for position in input_stages) and
             input_stages == sorted(input_stages),
-            "only parsed, generation-checked Nape XY reports may update the inertia tracker")
+            "parsed XY must be filtered before ordinary scroll routing and inertia tracking")
+    filter_header = (ROOT / "nape_bridge/scroll_filter.h").read_text(encoding="utf-8")
+    require("NAPE_SCROLL_X_AXIS_DOMINANCE_RATIO 2" in filter_header and
+            "NAPE_SCROLL_VERTICAL_AXIS_LOCK_MS 64" in filter_header and
+            "NAPE_SCROLL_X_AXIS_THRESHOLD_COUNTS 4" in filter_header,
+            "horizontal filtering must use the agreed dominance ratio, lock, and threshold")
+    require("nape_scroll_axis_filter_process" in inertia and
+            "nape_scroll_axis_filter_reset(&inertia_state.axis_filter);" in inertia,
+            "axis filtering must share inertia lifecycle and reset state")
+    require("motion->scroll_y = nape_scroll_axis_negate(raw_y);" in filter_header,
+            "ball-derived vertical scroll must be inverted before ordinary and inertia routing")
     require("k_work_cancel_delayable(&inertia_work);" in inertia and
             "k_work_reschedule(&inertia_work, K_MSEC(NAPE_SCROLL_INERTIA_START_DELAY_MS));" in inertia,
             "reset cancellation and input rescheduling must both remain present")
@@ -141,14 +151,14 @@ def main() -> None:
     require(all(position >= 0 for position in reset_positions) and
             reset_positions == sorted(reset_positions),
             "reset and delayed-work cancellation must be serialized by the inertia state lock")
-    track = re.search(r"(?s)void nape_inertia_track\(.*?\)\s*\{(.*?)\n}", inertia)
-    track_body = track.group(1) if track is not None else ""
-    track_schedule = [
-        track_body.find("k_spin_lock"), track_body.find("k_work_reschedule"),
-        track_body.rfind("k_spin_unlock")
+    prepare = re.search(r"(?s)void nape_inertia_prepare_motion\(.*?\)\s*\{(.*?)\n}", inertia)
+    prepare_body = prepare.group(1) if prepare is not None else ""
+    prepare_schedule = [
+        prepare_body.find("k_spin_lock"), prepare_body.find("k_work_reschedule"),
+        prepare_body.rfind("k_spin_unlock")
     ]
-    require(all(position >= 0 for position in track_schedule) and
-            track_schedule == sorted(track_schedule),
+    require(all(position >= 0 for position in prepare_schedule) and
+            prepare_schedule == sorted(prepare_schedule),
             "input rescheduling must be serialized against state reset")
     reset_epoch = re.search(r"(?s)static void reset_if_epoch\(.*?\)\s*\{(.*?)\n}", inertia)
     reset_epoch_positions = [

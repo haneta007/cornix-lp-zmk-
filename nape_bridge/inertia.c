@@ -19,6 +19,7 @@
 
 #include "inertia.h"
 #include "inertia_math.h"
+#include "scroll_filter.h"
 #include "nape_layer_index.h"
 
 #define NAPE_INPUT_NODE(n) DEVICE_DT_GET(DT_NODELABEL(n))
@@ -29,6 +30,7 @@ struct nape_inertia_state {
     int32_t estimate_y_q8;
     struct nape_inertia_axis x;
     struct nape_inertia_axis y;
+    struct nape_scroll_axis_filter axis_filter;
     uint32_t last_sample_ms;
     int64_t last_input_ms;
     int64_t started_ms;
@@ -54,6 +56,7 @@ static void reset_locked(void) {
     inertia_state.estimate_y_q8 = 0;
     nape_inertia_axis_reset(&inertia_state.x);
     nape_inertia_axis_reset(&inertia_state.y);
+    nape_scroll_axis_filter_reset(&inertia_state.axis_filter);
     inertia_state.last_sample_ms = 0;
     inertia_state.last_input_ms = 0;
     inertia_state.started_ms = 0;
@@ -81,38 +84,48 @@ static void reset_if_epoch(uint32_t expected_epoch) {
     k_spin_unlock(&inertia_state.lock, key);
 }
 
-void nape_inertia_track(int32_t dx, int32_t dy, uint32_t received_ms) {
-    if (!scroll_layer_active()) {
-        if (atomic_get(&inertia_armed)) {
-            nape_inertia_reset();
-        }
-        return;
-    }
-
+void nape_inertia_prepare_motion(int32_t raw_x, int32_t raw_y, uint32_t received_ms,
+                                 int32_t *motion_x, int32_t *motion_y) {
     const int64_t now_ms = k_uptime_get();
     k_spinlock_key_t key = k_spin_lock(&inertia_state.lock);
 
     if (!scroll_layer_active()) {
-        atomic_inc(&inertia_epoch);
-        atomic_clear(&inertia_armed);
+        *motion_x = raw_x;
+        *motion_y = raw_y;
+        const bool cancel_work = atomic_get(&inertia_armed);
+        if (cancel_work) {
+            atomic_inc(&inertia_epoch);
+            atomic_clear(&inertia_armed);
+        }
         reset_locked();
-        k_work_cancel_delayable(&inertia_work);
+        if (cancel_work) {
+            k_work_cancel_delayable(&inertia_work);
+        }
         k_spin_unlock(&inertia_state.lock, key);
         return;
     }
 
-    if (dx != 0 || dy != 0) {
+    struct nape_scroll_motion motion;
+    nape_scroll_axis_filter_process(&inertia_state.axis_filter, raw_x, raw_y, received_ms, &motion);
+    *motion_x = motion.scroll_x;
+    *motion_y = motion.scroll_y;
+
+    if (raw_x != 0 || raw_y != 0) {
         const uint32_t elapsed_ms = inertia_state.has_previous_sample
                                        ? received_ms - inertia_state.last_sample_ms
                                        : 0;
         const int32_t sample_x_q8 = nape_inertia_sample_velocity(
-            dx, elapsed_ms, inertia_state.has_previous_sample);
+            motion.velocity_x, elapsed_ms, inertia_state.has_previous_sample);
         const int32_t sample_y_q8 = nape_inertia_sample_velocity(
-            dy, elapsed_ms, inertia_state.has_previous_sample);
-        inertia_state.estimate_x_q8 =
-            nape_inertia_update_velocity(inertia_state.estimate_x_q8, sample_x_q8);
-        inertia_state.estimate_y_q8 =
-            nape_inertia_update_velocity(inertia_state.estimate_y_q8, sample_y_q8);
+            motion.velocity_y, elapsed_ms, inertia_state.has_previous_sample);
+        inertia_state.estimate_x_q8 = sample_x_q8 == 0
+                                          ? 0
+                                          : nape_inertia_update_velocity(
+                                                inertia_state.estimate_x_q8, sample_x_q8);
+        inertia_state.estimate_y_q8 = sample_y_q8 == 0
+                                          ? 0
+                                          : nape_inertia_update_velocity(
+                                                inertia_state.estimate_y_q8, sample_y_q8);
         inertia_state.last_sample_ms = received_ms;
         inertia_state.last_input_ms = now_ms;
         inertia_state.has_previous_sample = true;

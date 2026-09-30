@@ -110,11 +110,17 @@ Base Layerの無変換とEnterにある既存layer-tapは、タップすると�
 
 Layer 5のkeymap処理とNape scroll入力は別経路で同時に動く。解析済みの生XYはbridge内のtrackerがBLE通知時刻で速度推定に使い、`nape_motion_listener` のLayer 5 overrideは従来どおり `zip_xy_to_scroll_mapper` → `zip_scroll_scaler 1/8` の順にUSB HID scrollへ送る。overrideに `process-next` は付けず、親側のLayer 6 700ms `zip_temp_layer` を呼ばない。ボタンと物理wheelは従来の別 `nape_controls_listener` を使う。
 
-慣性trackerはLayer 5中のNape XYだけを観測し、通常のmapper/scaler経路には介入しない。速度サンプルはBLE通知到着時刻から求め、開始待ち時間はbridge処理時刻から40msとする。速いフリックでのみ慣性を始め、system workqueue上のdelayable workを16ms周期で動かす。速度はQ8固定小数点EMA `(old×3 + sample)/4`、方向反転時は旧速度を捨て、tickごとに230/256へ減衰する。最低開始速度は8 raw count/tick、停止thresholdは1 count/tick、最大継続は1200ms。X/Yは別速度・端数を持ち、既存1/8 scalerを慣性scrollにも一度だけ適用する。数値は `nape_bridge/inertia_math.h` に集約。
+Layer 5中のNape XYは共通の入力準備処理で軸選択とY反転を行い、通常mapper/scalerへ送りながら同じ受理済み入力から慣性速度を推定する。速度サンプルはBLE通知到着時刻から求め、開始待ち時間はbridge処理時刻から40msとする。速いフリックでのみ慣性を始め、system workqueue上のdelayable workを16ms周期で動かす。速度はQ8固定小数点EMA `(old×3 + sample)/4`、方向反転時は旧速度を捨て、tickごとに230/256へ減衰する。最低開始速度は8 raw count/tick、停止thresholdは1 count/tick、最大継続は1200ms。X/Yは別速度・端数を持ち、既存1/8 scalerを慣性scrollにも一度だけ適用する。数値は `nape_bridge/inertia_math.h` に集約。
 
-慣性scrollは専用virtual input deviceから直接wheel/hwheelを出すため、通常のXY mapperやLayer 6 temporary-layer timerに入り直さない。横・縦イベントはそれぞれ同期して送るため、斜めscroll中に片方のqueue送信が失敗しても未確定軸データを次回へ持ち越さない。実入力は解析後、motion queueへ渡す前に慣性世代を更新する。入力スレッドへ遅れて届いた古い合成イベントは世代タグで破棄する。Layer 5がOFF、Napeが切断、または新しいXYが来たとき速度・端数を消し、保留中のイベントも無効化する。Layer stateとwork予約/取消しのraceはstate lockで直列化する。ZMK標準scroll mapperの符号は維持し、Xはhorizontal wheel、Yはvertical wheel。方向を逆にする場合は標準transform processorをmapperの前に加える。
+慣性scrollは専用virtual input deviceから直接wheel/hwheelを出すため、通常のXY mapperやLayer 6 temporary-layer timerに入り直さない。横・縦イベントはそれぞれ同期して送るため、斜めscroll中に片方のqueue送信が失敗しても未確定軸データを次回へ持ち越さない。実入力は解析後、motion queueへ渡す前に慣性世代を更新する。入力スレッドへ遅れて届いた古い合成イベントは世代タグで破棄する。Layer 5がOFF、Napeが切断、または新しいXYが来たとき速度・端数を消し、保留中のイベントも無効化する。Layer stateとwork予約/取消しのraceはstate lockで直列化する。ZMK標準scroll mapperの軸割当を維持し、Xはhorizontal wheel、Yはvertical wheel。ボール由来のY符号はLayer 5の入力準備処理で反転し、物理ホイールの符号は維持する。
 
 Layer 5はFNキーのholdでもscroll modifierでもあるため、同じhold操作を使う。必要ならKeymap Editorで追加の任意キーへ `&mo 5` を割り当てられる。Layer 8/9はinactive legacy slotsなので新しい設定では使わない。
+
+## Napeスクロールの横ぶれ抑制と上下反転
+
+Layer 5 FN_SCROLL 中だけ、Napeボールの縦入力を反転して通常スクロールと慣性へ渡す。物理ホイール、通常カーソル、button入力はこの処理を通らない。
+
+横入力は縦入力より厳しくし、XがYの2倍以上のフレームを候補とする。強い横入力でないY成分が続く間は各フレームで64msの抑制時間を更新し、小さなXを通さない。Xが4 raw counts以上でYの2倍以上なら即時に横操作へ切り替える。弱い横入力は符号反転または80ms超の入力間隔で積算を破棄し、4カウントに達した時点で通常mapperへ渡す。慣性速度には積算前の受理されたXを使い、まとめて出力したカウントを速度と誤認しない。判定値は nape_bridge/scroll_filter.h に集約している。Layer 5解除・Nape切断時には慣性と横積算状態を消去する。
 
 ## Nape Proのペアリング
 

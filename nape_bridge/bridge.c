@@ -916,10 +916,13 @@ static void input_work_handler(struct k_work *work) {
         LOG_DBG("NAPE: input id=%u x=%d y=%d wheel=%d buttons=%02x", queued.report_id,
                 parsed.x, parsed.y, parsed.wheel, parsed.buttons);
         if (parsed.x || parsed.y) {
-            /* Invalidate pending synthetic scroll before queueing this real motion. */
-            nape_inertia_track(parsed.x, parsed.y, queued.received_ms);
-            emit_relative(motion, INPUT_REL_X, parsed.x, !parsed.y);
-            emit_relative(motion, INPUT_REL_Y, parsed.y, true);
+            /* Filter and invert only Layer 5 ball motion, before cursor/scroll routing. */
+            int32_t motion_x;
+            int32_t motion_y;
+            nape_inertia_prepare_motion(parsed.x, parsed.y, queued.received_ms,
+                                        &motion_x, &motion_y);
+            emit_relative(motion, INPUT_REL_X, motion_x, !motion_y);
+            emit_relative(motion, INPUT_REL_Y, motion_y, true);
         }
         if (parsed.wheel) emit_relative(controls, INPUT_REL_WHEEL, parsed.wheel, true);
         if (parsed.hwheel) emit_relative(controls, INPUT_REL_HWHEEL, parsed.hwheel, true);
