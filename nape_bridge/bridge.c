@@ -32,6 +32,7 @@ LOG_MODULE_REGISTER(nape, LOG_LEVEL_WRN);
 
 #define NAPE_MAX_GATT_REPORTS 8
 #define NAPE_REPORT_MAP_SIZE 512
+#define NAPE_SCAN_RETRY_DELAY_MS 2000u
 
 static int virtual_pointer_init(const struct device *dev) { return 0; }
 #define NAPE_POINTER_DEVICE(inst)                                                                  \
@@ -410,7 +411,8 @@ static void scan_timeout_handler(struct k_work *work) {
         LOG_WRN("NAPE: scan timeout stop failed (%d)", err);
         k_work_reschedule(&nape_scan_timeout_work, K_SECONDS(2));
     } else {
-        schedule_scan_backoff();
+        LOG_INF("NAPE: no candidate; retry scan in %u ms", NAPE_SCAN_RETRY_DELAY_MS);
+        k_work_reschedule(&nape_scan_work, K_MSEC(NAPE_SCAN_RETRY_DELAY_MS));
     }
 }
 

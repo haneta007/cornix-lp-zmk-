@@ -41,7 +41,7 @@ Nape Report notification → HID Report Map parser → Zephyr virtual input
 
 Nape BLE callbackは通知到着時刻とReportを固定長キューへコピーし、system work queueで接続世代を確認してから解析する。通常時の移動X/YはZMK既存のTemporary Layer Input Processor `zip_temp_layer` でLayer 6（`NAPE_MOUSE`）を有効化し、最後の移動から700ms後に解除する。Layer 5（`FN_SCROLL`）が有効な間は同じX/Yをscroll mapperへ通す。慣性速度trackerは、検証済みのReportを解析するbridge処理内でXYとBLE通知時刻を観測し、tracker stateはNape切断処理と同じbridge state mutexの下で無効化する。wheelとbuttonは別listenerへ通すため、デフォルトではタイマーを延長しない。
 
-Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、予備1）と `CONFIG_BT_MAX_PAIRED=8` を使う。通常ProspectorとCornixの設定は変更しない。split peripheral数は2のままで、Napeをsplit peripheralには数えない。ZMKでは `ZMK_SPLIT_BLE` が `ZMK_BLE` に依存するため、このvariantでもZMK BLE機能全体は無効化できない。PC出力はUSBを使い、ZMK BLE側の既存split動作を保つ。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。未発見時と切断時は最大32秒までの指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
+Nape専用Prospector variantは `CONFIG_BT_MAX_CONN=4`（Cornix左右、Nape、予備1）と `CONFIG_BT_MAX_PAIRED=8` を使う。通常ProspectorとCornixの設定は変更しない。split peripheral数は2のままで、Napeをsplit peripheralには数えない。ZMKでは `ZMK_SPLIT_BLE` が `ZMK_BLE` に依存するため、このvariantでもZMK BLE機能全体は無効化できない。PC出力はUSBを使い、ZMK BLE側の既存split動作を保つ。Nape scanはCornix左右のsplitサービス検出後だけ開始し、10秒で停止する。候補が見つからない場合は2秒後に再探索する。スキャン開始・接続失敗時は最大32秒まで指数backoffで再試行する。split再接続時にはZMKがNape scanを中断し、競合中はsplit scanを短時間後に再試行する。
 
 ## 変更ファイル
 
@@ -230,4 +230,3 @@ Actionsでこのartifactのbuildが成功した後、次の順に手動で行う
 - [Nape HID parser run 36361570858](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361570858) はparser testとlayer index検査が成功。[Build ZMK firmware run 36361974258](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36361974258) は通常matrixの12 build、切り戻しProspector、両archive mergeを含む全18 jobが成功した。
 - `firmware` artifactの `cornix_prospector_nape_bridge_nosd.uf2` はSHA256 `298F4F7FC6490BC362512FA94B83BE60EF3DE2AD829190F1CD010E453AE34ABA`。Prospectorへ手動で書くのはこのUF2。`firmware-baseline-dev` の `cornix_prospector_dongle_nosd.uf2` はSHA256 `C43C7E0717F25A14D604F4BF64E92BAF18C6D280F0176BBECC8C63E160A472AC` で、保存済み旧UF2と一致した。Cornix左右もbuild成功し、今回のための再書き込みは不要。
 - Keymap Editor対応後の新UF2による実機確認は未実施。書き込み後にCornix左右の文字入力、Napeのポインタ・wheel・button、番号9への切替と約700ms後の復帰を確認する。
-
