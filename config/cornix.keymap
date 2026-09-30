@@ -39,6 +39,16 @@
             quick-tap-ms = <150>;
         };
 
+        bs200: backspace_layer_tap {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            bindings = <&mo>, <&kp>;
+
+            flavor = "hold-preferred";
+            tapping-term-ms = <150>;
+            quick-tap-ms = <200>;
+        };
+
         lt300: layer_tap_300 {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
@@ -122,7 +132,7 @@
 &kp ESC    &kp Q     &kp W     &kp E                   &kp R               &kp T                                         &kp Y             &kp U            &kp I                &kp O     &kp P     &kp DEL
 &kp LALT   &kp A     &kp S     &kp D                   &kp F               &kp G                                         &kp H             &kp J            &kp K                &kp L     &kp BSLH  &kp SQT
 &kp LSHFT  &kp Z     &kp X     &kp C                   &kp V               &kp B                   &kp C_MUTE  &mkp MB3  &kp N             &kp M            &kp COMMA            &kp DOT   &kp UP    &kp FSLH
-&kp LCTRL  &kp LGUI  &kp LALT  &lt150 FN_SCROLL INT_MUHENKAN  &mt200 LSHFT SPACE  &lt150 EDIT INT_HENKAN                        &lt150 EDIT BSPC  &lt150 FN_SCROLL ENTER  &lt300 CUSTOM MINUS  &kp LEFT  &kp DOWN  &kp RIGHT
+&kp LCTRL  &kp LGUI  &kp LALT  &lt150 FN_SCROLL INT_MUHENKAN  &mt200 LSHFT SPACE  &lt150 EDIT INT_HENKAN                        &bs200 EDIT BSPC  &lt150 FN_SCROLL ENTER  &lt300 CUSTOM MINUS  &kp LEFT  &kp DOWN  &kp RIGHT
             >;
 
             sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &scroll_encoder>;
