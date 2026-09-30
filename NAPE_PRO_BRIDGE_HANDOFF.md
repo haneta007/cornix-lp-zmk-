@@ -11,7 +11,9 @@ Total output lines: 239
 
 新しい実XY入力は進行中の慣性を止めて履歴を更新する。Cornixの物理キー押下、Nape button/wheel、Layer 5の状態変化、Nape BLE切断でも速度・端数・workを消去する。workは既存のsystem workqueue上に1個だけ置き、synthetic eventにはepochを含めて古いqueued eventを破棄する。LisMの実装から参考にしたのは速度に応じたpointer accelerationであり、scroll慣性ではない。
 
-このブランチのホストCテスト、ファームウェアmatrix、RAM/Flash比較、UF2生成、実機テストは本ブランチのActions結果が得られた時点でここへ記録する。自動flashは行わない。
+`Nape HID parser` [run 36688827926](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36688827926)はASan/UBSan付きparser・cursor inertia math testとlayer/input routing検査が成功した。`Build ZMK firmware` [run 36688828598](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36688828598)も全matrix、Cornix Left/Right、Prospector Nape variants、別archive rollbackを含め成功した。固定ZMK commitは`edafb3b058445329d4cbc226621eb1d37529480c`のまま。
+
+Prospector通常Nape版はRAM `247546 / 262144` bytes (94.43%)、Flash `585480` bytes。変更前の同じ設定・固定west manifestによる[base run 36660244271](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36660244271)（commit `66547b093cf3ed2b5e8e69b87d35b2830f796a6b`）はRAM `247546 / 262144` bytes、Flash `584604` bytes。差分はRAM `0` bytes、Flash `+876` bytes。build artifact `firmware`には通常版`cornix_prospector_nape_bridge_nosd.uf2`（1,171,456 bytes）が含まれる。取得先は[run 36688828598のArtifacts](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36688828598)。UF2は実機へ書き込んでいないため、加速・慣性の体感、無変換/Enter tap-hold、FN操作との共存は実機で確認する。
 
 ## 2026-09-29 FN_SCROLLと慣性スクロール
 
