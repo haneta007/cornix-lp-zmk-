@@ -33,11 +33,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and run parser tests
+      - name: Compile and run parser and cursor inertia tests
         run: |
           cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/hid_mouse.c nape_bridge/tests/hid_mouse_test.c -o /tmp/nape-hid-test
           /tmp/nape-hid-test
-          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/tests/inertia_math_test.c -o /tmp/nape-inertia-test
-          /tmp/nape-inertia-test
-      - name: Validate temporary layer index
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g nape_bridge/tests/inertia_math_test.c -o /tmp/nape-cursor-inertia-test
+          /tmp/nape-cursor-inertia-test
+      - name: Validate layer and Nape input routing
         run: python3 nape_bridge/tests/validate_layer_index.py

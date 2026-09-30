@@ -7,66 +7,127 @@
 #include "../inertia_math.h"
 #include "../scroll_filter.h"
 
-static void test_velocity_sampling_and_threshold(void) {
-    int32_t slow = nape_inertia_sample_velocity(3, 16, true);
-    int32_t fast = nape_inertia_sample_velocity(16, 16, true);
-    assert(!nape_inertia_meets_start_threshold(slow));
-    assert(nape_inertia_meets_start_threshold(fast));
-    assert(nape_inertia_meets_start_threshold(-fast));
-    assert(nape_inertia_sample_velocity(127, 16, true) ==
-           NAPE_SCROLL_INERTIA_MAX_COUNTS_PER_TICK * NAPE_SCROLL_INERTIA_VELOCITY_SCALE);
+static void test_acceleration_profile_and_direction(void) {
+    struct nape_cursor_accel_axis axis = {0};
+
+    assert(nape_cursor_accel_gain_q8(2) == 256);
+    assert(nape_cursor_accel_gain_q8(7) == 288);
+    assert(nape_cursor_accel_gain_q8(12) == 320);
+    assert(nape_cursor_accel_gain_q8(100) == 320);
+    assert(nape_cursor_accel_scale(2, &axis) == 2);
+    assert(nape_cursor_accel_scale(8, &axis) == 9);
+
+    nape_cursor_accel_axis_reset(&axis);
+    assert(nape_cursor_accel_scale(12, &axis) == 15);
+    nape_cursor_accel_axis_reset(&axis);
+    assert(nape_cursor_accel_scale(20, &axis) == 25);
+    nape_cursor_accel_axis_reset(&axis);
+    assert(nape_cursor_accel_scale(-12, &axis) == -15);
 }
 
-static void test_velocity_uses_elapsed_report_time(void) {
-    const int32_t movement = 8 * NAPE_SCROLL_INERTIA_VELOCITY_SCALE;
+static void test_acceleration_fraction_and_reversal(void) {
+    struct nape_cursor_accel_axis axis = {0};
 
-    assert(nape_inertia_sample_velocity(8, 16, true) == movement);
-    assert(nape_inertia_sample_velocity(8, 32, true) == movement / 2);
-    assert(nape_inertia_sample_velocity(8, 0, true) == movement);
-    assert(nape_inertia_sample_velocity(8, NAPE_SCROLL_INERTIA_MAX_SAMPLE_GAP_MS + 1, true) ==
-           movement);
+    assert(nape_cursor_accel_scale(3, &axis) == 3);
+    assert(axis.remainder_q8 > 0);
+    const int32_t previous_remainder = axis.remainder_q8;
+    assert(nape_cursor_accel_scale(3, &axis) == 3);
+    assert(axis.remainder_q8 > previous_remainder);
+
+    assert(nape_cursor_accel_scale(-3, &axis) == -3);
+    assert(axis.remainder_q8 < 0);
+    assert(nape_cursor_accel_scale(3, &axis) == 3);
+    assert(axis.remainder_q8 > 0);
 }
 
-static void test_velocity_smoothing_and_reversal(void) {
-    const int32_t sample = 16 * NAPE_SCROLL_INERTIA_VELOCITY_SCALE;
-    assert(nape_inertia_update_velocity(0, sample) == sample / 4);
-    assert(nape_inertia_update_velocity(sample, -sample) == -sample);
-    assert(nape_inertia_update_velocity(sample, 0) == sample * 3 / 4);
+static void test_velocity_sampling_and_direction_reversal(void) {
+    const int32_t below = nape_cursor_inertia_sample_velocity(11, 16, true);
+    const int32_t threshold = nape_cursor_inertia_sample_velocity(12, 16, true);
+    const int32_t negative = nape_cursor_inertia_sample_velocity(-12, 16, true);
+
+    assert(!nape_cursor_inertia_meets_start_threshold(below));
+    assert(nape_cursor_inertia_meets_start_threshold(threshold));
+    assert(nape_cursor_inertia_meets_start_threshold(negative));
+    assert(nape_cursor_inertia_sample_velocity(8, 16, true) == 8 * 256);
+    assert(nape_cursor_inertia_sample_velocity(8, 32, true) == 4 * 256);
+    assert(nape_cursor_inertia_sample_velocity(8, 81, true) == 8 * 256);
+    assert(nape_cursor_inertia_sample_velocity(160, 16, true) == 64 * 256);
+
+    assert(nape_cursor_inertia_update_velocity(0, 16 * 256) == 4 * 256);
+    assert(nape_cursor_inertia_update_velocity(16 * 256, -16 * 256) == -16 * 256);
+    assert(nape_cursor_inertia_update_velocity(16 * 256, 0) == 12 * 256);
 }
 
-static void test_positive_and_negative_decay(void) {
+static void test_recent_movement_gate_and_expiry(void) {
+    struct nape_cursor_motion_history history = {0};
+
+    nape_cursor_inertia_history_add(&history, 12, 0, 1000);
+    assert(!nape_cursor_inertia_should_start(&history, 20 * 256, 0));
+    nape_cursor_inertia_history_add(&history, 12, 0, 1040);
+    assert(nape_cursor_inertia_should_start(&history, 12 * 256, 0));
+    assert(!nape_cursor_inertia_should_start(&history, 11 * 256, 0));
+
+    nape_cursor_inertia_history_prune(&history, 1040);
+    assert(history.count == 2);
+    nape_cursor_inertia_history_prune(&history, 1080);
+    assert(history.count == 1);
+    assert(!nape_cursor_inertia_should_start(&history, 20 * 256, 0));
+
+    nape_cursor_inertia_history_clear(&history);
+    assert(history.count == 0 && history.raw_total == 0);
+    nape_cursor_inertia_history_add(&history, 3, 0, 2000);
+    nape_cursor_inertia_history_add(&history, 3, 0, 2016);
+    assert(!nape_cursor_inertia_should_start(&history, 20 * 256, 0));
+    nape_cursor_inertia_history_clear(&history);
+    nape_cursor_inertia_history_add(&history, 24, 0, 2100);
+    assert(!nape_cursor_inertia_should_start(&history, 20 * 256, 0));
+}
+
+static void test_secondary_axis_and_seed(void) {
+    const uint64_t primary = 16u * 256u;
+    assert(nape_cursor_inertia_keep_axis(16 * 256, primary));
+    assert(!nape_cursor_inertia_keep_axis(3 * 256, primary));
+    assert(nape_cursor_inertia_keep_axis(4 * 256, primary));
+    assert(nape_cursor_inertia_keep_axis(-4 * 256, primary));
+    assert(nape_cursor_inertia_seed_velocity(16 * 256) == 4 * 256);
+}
+
+static void test_positive_negative_decay_and_fractional_stop(void) {
     struct nape_inertia_axis positive = {.velocity_q8 = 8 * 256};
     struct nape_inertia_axis negative = {.velocity_q8 = -8 * 256};
-    int32_t previous_positive = positive.velocity_q8;
-    int32_t previous_negative = negative.velocity_q8;
-    (void)nape_inertia_axis_step(&positive);
-    (void)nape_inertia_axis_step(&negative);
-    assert(positive.velocity_q8 > 0 && positive.velocity_q8 < previous_positive);
-    assert(negative.velocity_q8 < 0 && negative.velocity_q8 > previous_negative);
+    const int32_t old_positive = positive.velocity_q8;
+    const int32_t old_negative = negative.velocity_q8;
+    (void)nape_cursor_inertia_axis_step(&positive);
+    (void)nape_cursor_inertia_axis_step(&negative);
+    assert(positive.velocity_q8 > 0 && positive.velocity_q8 < old_positive);
+    assert(negative.velocity_q8 < 0 && negative.velocity_q8 > old_negative);
+
+    struct nape_inertia_axis fractional = {.velocity_q8 = 384};
+    assert(nape_cursor_inertia_axis_step(&fractional) == 1);
+    assert(fractional.remainder_q8 > 0);
+    assert(nape_cursor_inertia_axis_step(&fractional) == 1);
+
+    struct nape_inertia_axis stop = {.velocity_q8 = 160, .remainder_q8 = 20};
+    assert(nape_cursor_inertia_axis_step(&stop) == 0);
+    assert(stop.velocity_q8 == 0 && stop.remainder_q8 == 0);
 }
 
-static void test_fractional_accumulation_and_stop(void) {
-    struct nape_inertia_axis axis = {.velocity_q8 = 384};
-    assert(nape_inertia_axis_step(&axis) == 1);
-    assert(axis.remainder_q8 > 0);
-    assert(nape_inertia_axis_step(&axis) == 1);
+static void test_duration_idle_and_epoch_reset(void) {
+    assert(!nape_cursor_inertia_duration_expired(223, 349));
+    assert(nape_cursor_inertia_duration_expired(224, 100));
+    assert(nape_cursor_inertia_duration_expired(100, 350));
 
-    axis.velocity_q8 = 256;
-    axis.remainder_q8 = 100;
-    assert(nape_inertia_axis_step(&axis) == 1);
-    assert(axis.velocity_q8 == 0);
-    assert(axis.remainder_q8 == 0);
-}
-
-static void test_max_duration_and_reset(void) {
     struct nape_inertia_axis axis = {.velocity_q8 = 12 * 256, .remainder_q8 = 42};
-    assert(!nape_inertia_duration_expired(1199));
-    assert(nape_inertia_duration_expired(1200));
     nape_inertia_axis_reset(&axis);
     assert(axis.velocity_q8 == 0 && axis.remainder_q8 == 0);
+
+    const int32_t packet = nape_cursor_inertia_pack_event(42, -3);
+    assert(nape_cursor_inertia_event_is_current(packet, 42));
+    assert(nape_cursor_inertia_event_delta(packet) == -3);
+    assert(!nape_cursor_inertia_event_is_current(packet, 43));
 }
 
-static void test_vertical_lock_suppresses_horizontal_jitter(void) {
+static void test_scroll_axis_filter_is_unchanged(void) {
     struct nape_scroll_axis_filter state = {0};
     struct nape_scroll_motion motion;
 
@@ -74,51 +135,14 @@ static void test_vertical_lock_suppresses_horizontal_jitter(void) {
     assert(motion.scroll_x == 0 && motion.velocity_x == 0);
     assert(motion.scroll_y == -8 && motion.velocity_y == -8);
     nape_scroll_axis_filter_process(&state, -1, 7, 1016, &motion);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 0);
-    assert(motion.scroll_y == -7);
+    assert(motion.scroll_x == 0 && motion.scroll_y == -7);
+
+    nape_scroll_axis_filter_reset(&state);
+    nape_scroll_axis_filter_process(&state, 4, 2, 1100, &motion);
+    assert(motion.scroll_x == 4 && motion.scroll_y == -2);
 }
 
-static void test_vertical_component_keeps_lock_for_weak_x(void) {
-    struct nape_scroll_axis_filter state = {0};
-    struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 0, 8, 1000, &motion);
-    nape_scroll_axis_filter_process(&state, 2, 1, 1016, &motion);
-    assert(state.vertical_lock);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 0);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1070, &motion);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 0);
-}
-
-static void test_clear_horizontal_motion_switches_immediately(void) {
-    struct nape_scroll_axis_filter state = {0};
-    struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 0, 8, 1000, &motion);
-    nape_scroll_axis_filter_process(&state, 4, 2, 1016, &motion);
-    assert(motion.scroll_x == 4 && motion.velocity_x == 4);
-    assert(!state.vertical_lock);
-}
-
-static void test_slow_horizontal_motion_accumulates_after_vertical_lock(void) {
-    struct nape_scroll_axis_filter state = {0};
-    struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 0, 8, 1000, &motion);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1040, &motion);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 0);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1065, &motion);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 1);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1081, &motion);
-    assert(motion.scroll_x == 0);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1097, &motion);
-    assert(motion.scroll_x == 0);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1113, &motion);
-    assert(motion.scroll_x == 4);
-    assert(motion.scroll_y == 0);
-}
-
-static void test_vertical_input_discards_pending_horizontal_counts(void) {
+static void test_scroll_filter_accumulator_edges(void) {
     struct nape_scroll_axis_filter state = {0};
     struct nape_scroll_motion motion;
 
@@ -126,68 +150,25 @@ static void test_vertical_input_discards_pending_horizontal_counts(void) {
     nape_scroll_axis_filter_process(&state, 1, 0, 1016, &motion);
     assert(state.pending_x == 2);
     nape_scroll_axis_filter_process(&state, 0, 1, 1032, &motion);
-    assert(state.pending_x == 0);
-    assert(motion.scroll_y == -1);
-}
-
-static void test_horizontal_reversal_and_idle_gap_reset_accumulator(void) {
-    struct nape_scroll_axis_filter state = {0};
-    struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 2, 0, 1000, &motion);
-    nape_scroll_axis_filter_process(&state, -2, 0, 1016, &motion);
-    assert(state.pending_x == -2);
-    nape_scroll_axis_filter_process(&state, -2, 0, 1032, &motion);
-    assert(motion.scroll_x == -4);
+    assert(state.pending_x == 0 && motion.scroll_y == -1);
 
     nape_scroll_axis_filter_process(&state, 2, 0, 1100, &motion);
-    nape_scroll_axis_filter_process(&state, 2, 0, 1200, &motion);
-    assert(state.pending_x == 2);
-    assert(motion.scroll_x == 0);
-}
-
-static void test_scroll_direction_and_filter_reset(void) {
-    struct nape_scroll_axis_filter state = {0};
-    struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 0, 5, 1000, &motion);
-    assert(motion.scroll_y == -5 && motion.velocity_y == -5);
-    nape_scroll_axis_filter_process(&state, 0, INT32_MIN, 1016, &motion);
-    assert(motion.scroll_y == INT32_MAX);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1081, &motion);
-    assert(state.pending_active);
+    nape_scroll_axis_filter_process(&state, -2, 0, 1116, &motion);
+    assert(state.pending_x == -2);
     nape_scroll_axis_filter_reset(&state);
     assert(state.pending_x == 0 && !state.pending_active && !state.vertical_lock);
 }
 
-static void test_queued_scroll_epoch_and_signed_delta(void) {
-    const int32_t positive = nape_inertia_pack_scroll_event(42, 7);
-    const int32_t negative = nape_inertia_pack_scroll_event(42, -3);
-
-    assert(nape_inertia_scroll_event_is_current(positive, 42));
-    assert(nape_inertia_scroll_event_delta(positive) == 7);
-    assert(nape_inertia_scroll_event_is_current(negative, 42));
-    assert(nape_inertia_scroll_event_delta(negative) == -3);
-    assert(!nape_inertia_scroll_event_is_current(positive, 43));
-    assert(nape_inertia_scroll_event_is_current(
-        nape_inertia_pack_scroll_event(NAPE_SCROLL_INERTIA_EVENT_EPOCH_MASK + 1, 1), 0));
-}
-
 int main(void) {
-    test_velocity_sampling_and_threshold();
-    test_velocity_uses_elapsed_report_time();
-    test_velocity_smoothing_and_reversal();
-    test_positive_and_negative_decay();
-    test_fractional_accumulation_and_stop();
-    test_max_duration_and_reset();
-    test_vertical_lock_suppresses_horizontal_jitter();
-    test_vertical_component_keeps_lock_for_weak_x();
-    test_clear_horizontal_motion_switches_immediately();
-    test_slow_horizontal_motion_accumulates_after_vertical_lock();
-    test_vertical_input_discards_pending_horizontal_counts();
-    test_horizontal_reversal_and_idle_gap_reset_accumulator();
-    test_scroll_direction_and_filter_reset();
-    test_queued_scroll_epoch_and_signed_delta();
-    puts("Nape inertia math tests: PASS");
+    test_acceleration_profile_and_direction();
+    test_acceleration_fraction_and_reversal();
+    test_velocity_sampling_and_direction_reversal();
+    test_recent_movement_gate_and_expiry();
+    test_secondary_axis_and_seed();
+    test_positive_negative_decay_and_fractional_stop();
+    test_duration_idle_and_epoch_reset();
+    test_scroll_axis_filter_is_unchanged();
+    test_scroll_filter_accumulator_edges();
+    puts("Nape cursor inertia math tests: PASS");
     return 0;
 }

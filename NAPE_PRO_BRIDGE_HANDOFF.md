@@ -3,6 +3,16 @@ Total output lines: 239
 
 # Nape Pro → Prospector → Cornix 引き継ぎ
 
+## 2026-09-30 Cursor acceleration and weak inertia (`feat/nape-cursor-inertia`)
+
+最新の作業ブランチでは、慣性の対象をscrollから通常時のpointer X/Yへ変更する。Layer 5 `FN_SCROLL`中のNape XY→`zip_xy_to_scroll_mapper`→`zip_scroll_scaler 1/8`と、Layer 6 `NAPE_MOUSE`の700ms temporary layerは従来のまま。新しい`nape_inertia_cursor` virtual pointerと専用listenerを追加し、慣性イベントは`INPUT_REL_X/Y`だけを出す。scroll mapper、scaler、`zip_temp_layer`は通らない。
+
+通常カーソルにはLisMのmovement-magnitude accelerationを参考に、XY各軸を独立して1.00〜1.25倍にする。速度履歴は小さな固定長配列とQ8.8整数で管理する。慣性は80ms内に2件以上かつ合計24 raw counts以上の入力があり、推定速度が12 counts/16ms以上の場合だけ開始する。実入力停止から48ms待ち、初速を推定値の1/4にして16msごとに192/256倍へ減衰する。0.5 count未満で止め、継続時間は最大224ms、最終入力から最大350msとする。低速入力では発動しない設計だが、Report周期と操作感は実機で確認する。
+
+新しい実XY入力は進行中の慣性を止めて履歴を更新する。Cornixの物理キー押下、Nape button/wheel、Layer 5の状態変化、Nape BLE切断でも速度・端数・workを消去する。workは既存のsystem workqueue上に1個だけ置き、synthetic eventにはepochを含めて古いqueued eventを破棄する。LisMの実装から参考にしたのは速度に応じたpointer accelerationであり、scroll慣性ではない。
+
+このブランチのホストCテスト、ファームウェアmatrix、RAM/Flash比較、UF2生成、実機テストは本ブランチのActions結果が得られた時点でここへ記録する。自動flashは行わない。
+
 ## 2026-09-29 FN_SCROLLと慣性スクロール
 
 `feat/nape-scroll-inertia`では既存のlayer番号を再利用し、Layer 5を`FN_SCROLL`、Layer 6を`NAPE_MOUSE`、Layer 7を両者が同時に有効な時の競合解消に使う。旧Layer 8/9はtransparentなlegacy layerとして保持する。Layer 1のFN bindingsとsensor-bindingsはそのまま残し、FN keyboard操作をLayer 5へ複写した。Base Layer 0の無変換・Enterにある`&lt150`はタップ時の無変換/Enterと150msのtap-hold設定を保ったまま、ホールド先をLayer 5に変更した。

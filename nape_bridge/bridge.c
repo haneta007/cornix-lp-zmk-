@@ -917,26 +917,32 @@ static void input_work_handler(struct k_work *work) {
         }
         LOG_DBG("NAPE: input id=%u x=%d y=%d wheel=%d buttons=%02x", queued.report_id,
                 parsed.x, parsed.y, parsed.wheel, parsed.buttons);
+        uint8_t changed = (bridge.held_buttons ^ parsed.buttons) & parsed.button_mask & 0x1f;
+        const uint8_t next_held_buttons =
+            (bridge.held_buttons & ~parsed.button_mask) |
+            (parsed.buttons & parsed.button_mask);
+        const bool controls_active = next_held_buttons != 0 || parsed.wheel != 0 ||
+                                     parsed.hwheel != 0 || changed != 0;
+        if (controls_active && !(parsed.x || parsed.y)) {
+            nape_inertia_cancel();
+        }
         if (parsed.x || parsed.y) {
-            /* Filter and invert only Layer 5 ball motion, before cursor/scroll routing. */
             int32_t motion_x;
             int32_t motion_y;
             nape_inertia_prepare_motion(parsed.x, parsed.y, queued.received_ms,
-                                        &motion_x, &motion_y);
+                                        !controls_active, &motion_x, &motion_y);
             emit_relative(motion, INPUT_REL_X, motion_x, !motion_y);
             emit_relative(motion, INPUT_REL_Y, motion_y, true);
         }
         if (parsed.wheel) emit_relative(controls, INPUT_REL_WHEEL, parsed.wheel, true);
         if (parsed.hwheel) emit_relative(controls, INPUT_REL_HWHEEL, parsed.hwheel, true);
-        uint8_t changed = (bridge.held_buttons ^ parsed.buttons) & parsed.button_mask & 0x1f;
         for (uint8_t i = 0; i < 5; i++) {
             if (changed & BIT(i)) {
                 input_report_key(controls, INPUT_BTN_0 + i, !!(parsed.buttons & BIT(i)),
                                  true, K_NO_WAIT);
             }
         }
-        bridge.held_buttons = (bridge.held_buttons & ~parsed.button_mask) |
-                              (parsed.buttons & parsed.button_mask);
+        bridge.held_buttons = next_held_buttons;
     }
     k_mutex_unlock(&nape_state_lock);
 }
