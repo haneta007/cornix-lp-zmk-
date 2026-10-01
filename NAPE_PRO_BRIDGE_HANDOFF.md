@@ -13,6 +13,8 @@ ChatGPT版`fix/studio-lang-intl`の`221c0c2`はNape追加前の`86aaf3d`から�
 
 Studio修正の通常UF2は新branchのGitHub Actions `firmware`内の`cornix_prospector_nape_bridge_nosd.uf2`。慣性なし版も既存名で生成する。Prospectorだけへ手動で書き、既存Studio保存内容が残ること、4キーの選択・保存・再読み込み、左右文字入力、Nape接続・XY・button・wheel・FN_SCROLLを確認する。`firmware-baseline-dev`の`cornix_prospector_dongle_nosd.uf2`はNapeなし切り戻し版であり、Studio修正を適用していない。bond/settings resetと自動flashはしない。
 
+検証：実装commit `3951d235fc19656903e6bf3618381062a6286c0f`で[Nape tests run 36942045767](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36942045767)が成功。[firmware run 36942047516](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36942047516)もNape通常・慣性なし・診断版、Cornix左右、切り戻し`cornix_prospector_dongle_nosd`を含め全成功。通常Nape buildの生成済み`.config`出力で`CONFIG_ZMK_HID_REPORT_TYPE_HKRO=y`、`CONFIG_ZMK_STUDIO=y`、`CONFIG_ZMK_NAPE_BRIDGE=y`、`CONFIG_BT_MAX_CONN=4`を確認した。通常NapeのRAMは247,674 / 262,144 bytes（94.48%）、Flashは585,916 bytes。基準版との比較はRAM +0 bytes、Flash -16 bytes。Studio保存・再読み込みとNape動作の実機確認は未実施。
+
 ## 2026-10-01 カーソル飛び切り分け用：慣性なし版
 
 `cornix_prospector_nape_bridge_no_inertia_nosd.uf2`は比較用。通常版の固定輝度80、カーソル加速度最大約1.4倍、スクロール横ブレ対策、keymap、BLE設定を維持し、`CONFIG_ZMK_NAPE_CURSOR_INERTIA=n`だけを追加する。通常版`cornix_prospector_nape_bridge_nosd.uf2`は慣性ONのまま残す。慣性OFFでは加速度処理後にtrackingを打ち切り、synthetic eventの受信側とwork側でも慣性OFFを確認する。スクロールに慣性はない。
