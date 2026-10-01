@@ -11,18 +11,18 @@ static void test_acceleration_profile_and_direction(void) {
     struct nape_cursor_accel_axis axis = {0};
 
     assert(nape_cursor_accel_gain_q8(2) == 256);
-    assert(nape_cursor_accel_gain_q8(7) == 288);
-    assert(nape_cursor_accel_gain_q8(12) == 320);
-    assert(nape_cursor_accel_gain_q8(100) == 320);
+    assert(nape_cursor_accel_gain_q8(7) == 307);
+    assert(nape_cursor_accel_gain_q8(12) == 358);
+    assert(nape_cursor_accel_gain_q8(100) == 358);
     assert(nape_cursor_accel_scale(2, &axis) == 2);
     assert(nape_cursor_accel_scale(8, &axis) == 9);
 
     nape_cursor_accel_axis_reset(&axis);
-    assert(nape_cursor_accel_scale(12, &axis) == 15);
+    assert(nape_cursor_accel_scale(12, &axis) == 16);
     nape_cursor_accel_axis_reset(&axis);
-    assert(nape_cursor_accel_scale(20, &axis) == 25);
+    assert(nape_cursor_accel_scale(20, &axis) == 27);
     nape_cursor_accel_axis_reset(&axis);
-    assert(nape_cursor_accel_scale(-12, &axis) == -15);
+    assert(nape_cursor_accel_scale(-12, &axis) == -16);
 }
 
 static void test_acceleration_fraction_and_reversal(void) {
@@ -127,36 +127,82 @@ static void test_duration_idle_and_epoch_reset(void) {
     assert(!nape_cursor_inertia_event_is_current(packet, 43));
 }
 
-static void test_scroll_axis_filter_is_unchanged(void) {
+static void test_scroll_start_confirmation_and_idle(void) {
     struct nape_scroll_axis_filter state = {0};
     struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 2, 8, 1000, &motion);
-    assert(motion.scroll_x == 0 && motion.velocity_x == 0);
-    assert(motion.scroll_y == -8 && motion.velocity_y == -8);
-    nape_scroll_axis_filter_process(&state, -1, 7, 1016, &motion);
-    assert(motion.scroll_x == 0 && motion.scroll_y == -7);
-
-    nape_scroll_axis_filter_reset(&state);
-    nape_scroll_axis_filter_process(&state, 4, 2, 1100, &motion);
-    assert(motion.scroll_x == 4 && motion.scroll_y == -2);
+    nape_scroll_axis_filter_process(&state, 24, 0, 1000, &motion);
+    assert(motion.scroll_x == 0 && !state.horizontal_confirmed);
+    nape_scroll_axis_filter_process(&state, 0, 8, 1016, &motion);
+    assert(motion.scroll_x == 0 && motion.scroll_y == -8 && state.pending_x == 0);
+    nape_scroll_axis_filter_process(&state, 8, 0, 1200, &motion);
+    assert(motion.scroll_x == 0);
+    nape_scroll_axis_filter_process(&state, 8, 0, 1216, &motion);
+    assert(motion.scroll_x == 8 && state.horizontal_confirmed);
+    nape_scroll_axis_filter_process(&state, 1, 0, 1232, &motion);
+    assert(motion.scroll_x == 0 && state.pending_x == 1);
+    nape_scroll_axis_filter_process(&state, 3, 0, 1248, &motion);
+    assert(motion.scroll_x == 4);
+    nape_scroll_axis_filter_process(&state, 0, 0, 1400, &motion);
+    assert(state.last_motion_ms == 1248);
+    nape_scroll_axis_filter_process(&state, 24, 0, 1408, &motion);
+    assert(motion.scroll_x == 0 && !state.horizontal_confirmed);
 }
 
-static void test_scroll_filter_accumulator_edges(void) {
+static void test_scroll_vertical_release_and_switch(void) {
     struct nape_scroll_axis_filter state = {0};
     struct nape_scroll_motion motion;
-
-    nape_scroll_axis_filter_process(&state, 1, 0, 1000, &motion);
-    nape_scroll_axis_filter_process(&state, 1, 0, 1016, &motion);
-    assert(state.pending_x == 2);
-    nape_scroll_axis_filter_process(&state, 0, 1, 1032, &motion);
-    assert(state.pending_x == 0 && motion.scroll_y == -1);
-
-    nape_scroll_axis_filter_process(&state, 2, 0, 1100, &motion);
-    nape_scroll_axis_filter_process(&state, -2, 0, 1116, &motion);
-    assert(state.pending_x == -2);
+    nape_scroll_axis_filter_process(&state, 2, 8, 1000, &motion);
+    assert(motion.scroll_x == 0 && motion.scroll_y == -8);
+    nape_scroll_axis_filter_process(&state, 20, 0, 1016, &motion);
+    assert(motion.scroll_x == 0 && state.vertical_lock);
+    nape_scroll_axis_filter_process(&state, 1, 0, 1032, &motion);
+    assert(motion.scroll_x == 0 && state.pending_x == 0);
+    nape_scroll_axis_filter_process(&state, 8, 0, 1048, &motion);
+    assert(motion.scroll_x == 0);
+    nape_scroll_axis_filter_process(&state, 8, 0, 1064, &motion);
+    assert(motion.scroll_x == 8 && !state.vertical_lock);
+    nape_scroll_axis_filter_process(&state, 0, -8, 1080, &motion);
+    assert(motion.scroll_y == 8 && !state.horizontal_confirmed);
+    nape_scroll_axis_filter_process(&state, -20, 0, 1096, &motion);
+    assert(motion.scroll_x == 0);
     nape_scroll_axis_filter_reset(&state);
-    assert(state.pending_x == 0 && !state.pending_active && !state.vertical_lock);
+    assert(!state.horizontal_confirmed && !state.motion_active && !state.pending_active);
+}
+
+static void test_scroll_confirmation_edges(void) {
+    struct nape_scroll_axis_filter state = {0};
+    struct nape_scroll_motion motion;
+    nape_scroll_axis_filter_process(&state, 3, 0, 1000, &motion);
+    nape_scroll_axis_filter_process(&state, 3, 0, 1016, &motion);
+    assert(state.pending_x == 0 && motion.scroll_x == 0);
+    nape_scroll_axis_filter_process(&state, 4, 0, 1032, &motion);
+    nape_scroll_axis_filter_process(&state, 4, 0, 1048, &motion);
+    assert(motion.scroll_x == 0);
+    nape_scroll_axis_filter_process(&state, 4, 0, 1064, &motion);
+    nape_scroll_axis_filter_process(&state, 4, 0, 1080, &motion);
+    assert(motion.scroll_x == 4);
+    nape_scroll_axis_filter_reset(&state);
+    nape_scroll_axis_filter_process(&state, 8, 0, 1100, &motion);
+    nape_scroll_axis_filter_process(&state, -8, 0, 1116, &motion);
+    assert(motion.scroll_x == 0 && state.pending_x == -8);
+    nape_scroll_axis_filter_process(&state, -8, 0, 1197, &motion);
+    assert(motion.scroll_x == 0 && state.confirmation_reports == 1);
+    nape_scroll_axis_filter_process(&state, -8, 0, 1277, &motion);
+    assert(motion.scroll_x == -8);
+    nape_scroll_axis_filter_reset(&state);
+    nape_scroll_axis_filter_process(&state, 8, 5, 1300, &motion);
+    assert(motion.scroll_x == 0 && motion.scroll_y == -5);
+    nape_scroll_axis_filter_process(&state, 8, 4, 1316, &motion);
+    nape_scroll_axis_filter_process(&state, 8, 4, 1332, &motion);
+    assert(motion.scroll_x == 8 && motion.scroll_y == -4);
+    nape_scroll_axis_filter_reset(&state);
+    nape_scroll_axis_filter_process(&state, INT32_MAX, 0, UINT32_MAX - 8, &motion);
+    nape_scroll_axis_filter_process(&state, INT32_MAX, 0, 8, &motion);
+    assert(motion.scroll_x == INT32_MAX);
+    nape_scroll_axis_filter_reset(&state);
+    nape_scroll_axis_filter_process(&state, INT32_MIN, 0, 100, &motion);
+    nape_scroll_axis_filter_process(&state, INT32_MIN, 0, 116, &motion);
+    assert(motion.scroll_x == INT32_MIN);
 }
 
 int main(void) {
@@ -167,8 +213,9 @@ int main(void) {
     test_secondary_axis_and_seed();
     test_positive_negative_decay_and_fractional_stop();
     test_duration_idle_and_epoch_reset();
-    test_scroll_axis_filter_is_unchanged();
-    test_scroll_filter_accumulator_edges();
+    test_scroll_start_confirmation_and_idle();
+    test_scroll_vertical_release_and_switch();
+    test_scroll_confirmation_edges();
     puts("Nape cursor inertia math tests: PASS");
     return 0;
 }

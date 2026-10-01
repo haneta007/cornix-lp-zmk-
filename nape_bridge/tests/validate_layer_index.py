@@ -125,7 +125,7 @@ def main() -> None:
         "NAPE_CURSOR_ACCEL_START_COUNTS": 2,
         "NAPE_CURSOR_ACCEL_FULL_COUNTS": 12,
         "NAPE_CURSOR_ACCEL_BASE_Q8": 256,
-        "NAPE_CURSOR_ACCEL_MAX_Q8": 320,
+        "NAPE_CURSOR_ACCEL_MAX_Q8": 358,
         "NAPE_CURSOR_INERTIA_START_DELAY_MS": 48,
         "NAPE_CURSOR_INERTIA_TICK_MS": 16,
         "NAPE_CURSOR_INERTIA_DECAY_NUMERATOR": 192,
@@ -213,10 +213,13 @@ def main() -> None:
 
     filter_header = (ROOT / "nape_bridge/scroll_filter.h").read_text(encoding="utf-8")
     require("NAPE_SCROLL_X_AXIS_DOMINANCE_RATIO 2" in filter_header and
-            "NAPE_SCROLL_VERTICAL_AXIS_LOCK_MS 64" in filter_header and
+            "NAPE_SCROLL_VERTICAL_AXIS_LOCK_MS 160" in filter_header and
             "NAPE_SCROLL_X_AXIS_THRESHOLD_COUNTS 4" in filter_header and
+            "NAPE_SCROLL_X_CONFIRM_COUNTS 16" in filter_header and
+            "NAPE_SCROLL_X_CONFIRM_REPORTS 2" in filter_header and
+            "NAPE_SCROLL_GESTURE_IDLE_MS 160" in filter_header and
             "motion->scroll_y = nape_scroll_axis_negate(raw_y);" in filter_header,
-            "the existing horizontal threshold and vertical inversion must stay intact")
+            "horizontal filtering and vertical inversion must stay configured")
 
     names = re.findall(r'(?m)^\s*display-name\s*=\s*"([^"]+)"\s*;', keymap)
     require(len(names) == 10 and names[5:8] ==

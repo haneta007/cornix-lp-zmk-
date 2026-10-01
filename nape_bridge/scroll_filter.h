@@ -6,15 +6,22 @@
 
 #define NAPE_SCROLL_X_AXIS_DOMINANCE_RATIO 2
 #define NAPE_SCROLL_X_AXIS_THRESHOLD_COUNTS 4
-#define NAPE_SCROLL_VERTICAL_AXIS_LOCK_MS 64
+#define NAPE_SCROLL_VERTICAL_AXIS_LOCK_MS 160
 #define NAPE_SCROLL_X_ACCUMULATOR_GAP_MS 80
+#define NAPE_SCROLL_X_CONFIRM_COUNTS 16
+#define NAPE_SCROLL_X_CONFIRM_REPORTS 2
+#define NAPE_SCROLL_GESTURE_IDLE_MS 160
 
 struct nape_scroll_axis_filter {
     int32_t pending_x;
     uint32_t last_vertical_ms;
     uint32_t last_pending_ms;
+    uint32_t last_motion_ms;
     bool vertical_lock;
     bool pending_active;
+    uint8_t confirmation_reports;
+    bool horizontal_confirmed;
+    bool motion_active;
 };
 
 struct nape_scroll_motion {
@@ -37,13 +44,18 @@ static inline void nape_scroll_axis_filter_reset(struct nape_scroll_axis_filter 
     state->last_vertical_ms = 0;
     state->last_pending_ms = 0;
     state->vertical_lock = false;
+    state->last_motion_ms = 0;
+    state->horizontal_confirmed = false;
+    state->motion_active = false;
     state->pending_active = false;
+    state->confirmation_reports = 0;
 }
 
 static inline void nape_scroll_axis_filter_clear_pending(struct nape_scroll_axis_filter *state) {
     state->pending_x = 0;
     state->last_pending_ms = 0;
     state->pending_active = false;
+    state->confirmation_reports = 0;
 }
 
 static inline int32_t nape_scroll_axis_filter_clamp(int64_t value) {
@@ -66,6 +78,17 @@ static inline void nape_scroll_axis_filter_process(struct nape_scroll_axis_filte
     motion->velocity_x = 0;
     motion->velocity_y = motion->scroll_y;
 
+    /* Zero reports do not extend the gesture or count as confirmation. */
+    if (raw_x == 0 && raw_y == 0) {
+        return;
+    }
+    if (state->motion_active &&
+        (uint32_t)(received_ms - state->last_motion_ms) >= NAPE_SCROLL_GESTURE_IDLE_MS) {
+        nape_scroll_axis_filter_reset(state);
+    }
+    state->last_motion_ms = received_ms;
+    state->motion_active = true;
+
     const uint64_t x_magnitude = nape_scroll_axis_magnitude(raw_x);
     const uint64_t y_magnitude = nape_scroll_axis_magnitude(raw_y);
     const bool x_dominant = x_magnitude != 0 &&
@@ -74,6 +97,7 @@ static inline void nape_scroll_axis_filter_process(struct nape_scroll_axis_filte
         x_dominant && x_magnitude >= NAPE_SCROLL_X_AXIS_THRESHOLD_COUNTS;
 
     if (y_magnitude != 0 && !strong_horizontal) {
+        state->horizontal_confirmed = false;
         state->vertical_lock = true;
         state->last_vertical_ms = received_ms;
         nape_scroll_axis_filter_clear_pending(state);
@@ -83,18 +107,44 @@ static inline void nape_scroll_axis_filter_process(struct nape_scroll_axis_filte
         state->vertical_lock = false;
     }
 
-    if (raw_x == 0) {
+    if (!state->horizontal_confirmed) {
+        /* A single release/startup twitch must never unlock horizontal scrolling. */
+        if (!strong_horizontal) {
+            nape_scroll_axis_filter_clear_pending(state);
+            return;
+        }
+        if (state->pending_active &&
+            ((uint32_t)(received_ms - state->last_pending_ms) >
+                 NAPE_SCROLL_X_ACCUMULATOR_GAP_MS ||
+             (state->pending_x < 0 && raw_x > 0) ||
+             (state->pending_x > 0 && raw_x < 0))) {
+            nape_scroll_axis_filter_clear_pending(state);
+        }
+        state->pending_x = nape_scroll_axis_filter_clamp((int64_t)state->pending_x + raw_x);
+        state->last_pending_ms = received_ms;
+        state->pending_active = true;
+        if (state->confirmation_reports < NAPE_SCROLL_X_CONFIRM_REPORTS) {
+            state->confirmation_reports++;
+        }
+        if (state->confirmation_reports < NAPE_SCROLL_X_CONFIRM_REPORTS ||
+            nape_scroll_axis_magnitude(state->pending_x) < NAPE_SCROLL_X_CONFIRM_COUNTS) {
+            return;
+        }
+        state->horizontal_confirmed = true;
+        state->vertical_lock = false;
+        nape_scroll_axis_filter_clear_pending(state);
+        /* Discard withheld samples rather than replaying them as a jump. */
+        motion->scroll_x = raw_x;
+        motion->velocity_x = raw_x;
         return;
     }
 
     if (strong_horizontal) {
         motion->scroll_x = raw_x;
         motion->velocity_x = raw_x;
-        state->vertical_lock = false;
         nape_scroll_axis_filter_clear_pending(state);
         return;
     }
-
     if (!x_dominant || state->vertical_lock) {
         nape_scroll_axis_filter_clear_pending(state);
         return;

@@ -3,6 +3,16 @@ Total output lines: 239
 
 # Nape Pro → Prospector → Cornix 引き継ぎ
 
+## 2026-10-01 カーソル加速度と横スクロール誤入力対策
+
+カーソル加速度上限はQ8値358（358/256 ≒ 1.3984倍）。低速2 counts以下は1倍、12 counts以上は上限、その間は線形補間する。慣性設定は維持するが、加速後の速度を使うため強い操作の慣性初速も少し増える。
+
+FN_SCROLL中は、開始時・縦操作後・最後の非ゼロXYから160ms以上の休止後に横方向を再確認する。横が縦の2倍以上、各入力4 counts以上、同方向2入力以上、合計16 counts以上で横操作を確定する。候補間隔は80ms以内。反転・条件外・時間切れで候補を消し、確定時は現在の横入力だけを出力する。縦入力は待たず従来どおり反転して通す。縦操作後の保護は160ms。Layer 5解除と切断で状態を消す。横確定後は従来の小入力累積を使うため、最初に明確な横操作をしてからゆっくり横に動かせる。
+
+調整値は`nape_bridge/scroll_filter.h`にまとめた。開始を軽くするには`NAPE_SCROLL_X_CONFIRM_COUNTS`または`NAPE_SCROLL_X_CONFIRM_REPORTS`を下げる。横ブレが残るなら確認countsを上げる。操作の区切りは`NAPE_SCROLL_GESTURE_IDLE_MS`で調整する。単発の大きな横入力も確認前には破棄するため、意図した横操作の開始には遅延がある。スクロール慣性は追加していない。
+
+実機では縦操作の開始・指を離す瞬間、縦から横への切替、低速横操作、FN解除・再押下、通常カーソルの加速・慣性、buttonと物理wheelを確認する。Prospectorには新buildの`firmware`内の`cornix_prospector_nape_bridge_nosd.uf2`だけを手動で書く。自動flashはしない。
+
 ## 2026-09-30 Cursor acceleration and weak inertia (`feat/nape-cursor-inertia`)
 
 最新の作業ブランチでは、慣性の対象をscrollから通常時のpointer X/Yへ変更する。Layer 5 `FN_SCROLL`中のNape XY→`zip_xy_to_scroll_mapper`→`zip_scroll_scaler 1/8`と、Layer 6 `NAPE_MOUSE`の700ms temporary layerは従来のまま。新しい`nape_inertia_cursor` virtual pointerと専用listenerを追加し、慣性イベントは`INPUT_REL_X/Y`だけを出す。scroll mapper、scaler、`zip_temp_layer`は通らない。
