@@ -14,8 +14,8 @@ manifest:
       url-base: https://github.com/haneta007
   projects:
     - name: zmk
-      remote: zmkfirmware
-      revision: main
+      remote: haneta007
+      revision: fix/studio-hid-usage-validation
       clone-depth: 1
       import:
         file: app/west.yml
