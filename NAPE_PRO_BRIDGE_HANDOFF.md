@@ -3,6 +3,16 @@ Total output lines: 239
 
 # Nape Pro → Prospector → Cornix 引き継ぎ
 
+## 2026-10-02 Studio特殊Keyboard Usageの最小修正
+
+Cornixは正常版`feat/nape-cursor-inertia`の`a48df5697b2aea5b597d96b86e870c9d7e3e9175`を基準に、専用`fix/nape-studio-lang-intl`で修正した。ZMKはNape対応済み`edafb3b058445329d4cbc226621eb1d37529480c`から`fix/nape-studio-hid-usage-validation`を作り、`app/src/behavior.c`の`validate_hid_usage()`で`ZMK_HID_KEYBOARD_NKRO_MAX_USAGE`を`ZMK_HID_KEYBOARD_MAX_USAGE`へ変えた1行だけ。修正版は`55d98b8adf8ac634c09486384fb207df1e98b5f2`で、`config/west.yml`はこのSHAを固定する。Zephyr・Prospector等のrevisionは維持した。Nape実装、HID parser、adapter、split、pointing、HKRO、keymap、settings reset処理は変更していない。テストの固定ZMK SHA期待値だけ更新した。
+
+HKROの上限は0xFFなので、Studioのparameter validationがInternational4(0x8A)、International5(0x8B)、LANG1(0x90)、LANG2(0x91)を許可するようになる。無効Usage、modifier、consumerの既存条件は維持する。実際の検証関数を抽出したMSVC C11 /W4 /WXホストテストは、元版と修正版についてHKRO・通常NKRO・拡張NKROの全16-bit Keyboard Usageを検査し、6構成成功した。Studioの選択・保存・再読み込みとNape動作の実機確認は別途必要。
+
+ChatGPT版`fix/studio-lang-intl`の`221c0c2`はNape追加前の`86aaf3d`から分岐し、Nape bridgeソースやshieldがなく、build.yamlもNapeなしだった。ZMK側`fix/studio-hid-usage-validation`の`adbaeb9`も`9ebbeff`から分岐し、正常版にあるBLE scan arbitration・split discovery待機等の4コミットを含まない。この構成差がNape接続回帰の有力原因で、1行のStudio検証修正が直接BLEを壊した証拠はない。両ChatGPT版のmerge/cherry-pickは行っていない。
+
+Studio修正の通常UF2は新branchのGitHub Actions `firmware`内の`cornix_prospector_nape_bridge_nosd.uf2`。慣性なし版も既存名で生成する。Prospectorだけへ手動で書き、既存Studio保存内容が残ること、4キーの選択・保存・再読み込み、左右文字入力、Nape接続・XY・button・wheel・FN_SCROLLを確認する。`firmware-baseline-dev`の`cornix_prospector_dongle_nosd.uf2`はNapeなし切り戻し版であり、Studio修正を適用していない。bond/settings resetと自動flashはしない。
+
 ## 2026-10-01 カーソル飛び切り分け用：慣性なし版
 
 `cornix_prospector_nape_bridge_no_inertia_nosd.uf2`は比較用。通常版の固定輝度80、カーソル加速度最大約1.4倍、スクロール横ブレ対策、keymap、BLE設定を維持し、`CONFIG_ZMK_NAPE_CURSOR_INERTIA=n`だけを追加する。通常版`cornix_prospector_nape_bridge_nosd.uf2`は慣性ONのまま残す。慣性OFFでは加速度処理後にtrackingを打ち切り、synthetic eventの受信側とwork側でも慣性OFFを確認する。スクロールに慣性はない。

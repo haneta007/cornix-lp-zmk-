@@ -299,7 +299,7 @@ def main() -> None:
                 positions == sorted(positions),
                 f"{function_name} must serialize state and work operations")
 
-    require("revision: edafb3b058445329d4cbc226621eb1d37529480c" in west and
+    require("revision: 55d98b8adf8ac634c09486384fb207df1e98b5f2" in west and
             "revision: 28438c476e2e17d648ce25a14d85525997cc48e3" in west,
             "pinned ZMK and Prospector module commits must not change")
     nape_variants = build.count("shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge")
