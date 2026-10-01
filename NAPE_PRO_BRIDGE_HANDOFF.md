@@ -13,6 +13,10 @@ FN_SCROLL中は、開始時・縦操作後・最後の非ゼロXYから160ms以�
 
 実機では縦操作の開始・指を離す瞬間、縦から横への切替、低速横操作、FN解除・再押下、通常カーソルの加速・慣性、buttonと物理wheelを確認する。Prospectorには新buildの`firmware`内の`cornix_prospector_nape_bridge_nosd.uf2`だけを手動で書く。自動flashはしない。
 
+検証結果：実装commit `98deda446047c65959327e0fc3bc97bbc906b66b`で[parser・加速度・横判定・慣性テスト run 36794560897](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36794560897)が成功（ASan/UBSan）。[firmware run 36794561404](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36794561404)はProspector各版・Cornix左右・切り戻し版を含め全成功、`firmware`と`firmware-baseline-dev`を生成した。
+
+通常Nape版の変更前は[run 36792477320](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36792477320)（`4fa79ec`）でRAM 247,674 / 262,144 bytes、Flash 585,580 bytes。変更後はRAM 247,674 bytes（94.48%）、Flash 585,932 bytes。差分はRAM 0 bytes、Flash +352 bytes。これらはリンク時使用量であり、実行時stackやBLE負荷の余裕を測定した値ではない。実機への書き込み・操作確認は未実施。
+
 ## 2026-09-30 Cursor acceleration and weak inertia (`feat/nape-cursor-inertia`)
 
 最新の作業ブランチでは、慣性の対象をscrollから通常時のpointer X/Yへ変更する。Layer 5 `FN_SCROLL`中のNape XY→`zip_xy_to_scroll_mapper`→`zip_scroll_scaler 1/8`と、Layer 6 `NAPE_MOUSE`の700ms temporary layerは従来のまま。新しい`nape_inertia_cursor` virtual pointerと専用listenerを追加し、慣性イベントは`INPUT_REL_X/Y`だけを出す。scroll mapper、scaler、`zip_temp_layer`は通らない。
