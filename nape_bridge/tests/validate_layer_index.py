@@ -143,6 +143,18 @@ def main() -> None:
         require(len(values) == 1 and int(values[0]) == expected,
                 f"{name} must remain {expected}")
 
+    require("!IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_INERTIA) || !allow_inertia" in inertia,
+            "comparison build must bypass inertia tracking after cursor acceleration")
+    comparison = (ROOT / "config/nape_no_inertia.conf").read_text(encoding="utf-8")
+    normal = (ROOT / "config/nape_fixed_brightness.conf").read_text(encoding="utf-8")
+    normal_settings = {line for line in normal.splitlines() if line.startswith("CONFIG_")}
+    comparison_settings = {line for line in comparison.splitlines() if line.startswith("CONFIG_")}
+    require(comparison_settings == normal_settings | {"CONFIG_ZMK_NAPE_CURSOR_INERTIA=n"},
+            "comparison must retain normal configuration and disable only cursor inertia")
+    require("artifact-name: cornix_prospector_nape_bridge_no_inertia_nosd" in
+            (ROOT / "build.yaml").read_text(encoding="utf-8"),
+            "comparison UF2 must have its own artifact name")
+
     require("nape_cursor_accel_scale(raw_x" in inertia and
             "nape_cursor_accel_scale(raw_y" in inertia,
             "normal pointer movement must use per-axis acceleration")

@@ -142,7 +142,7 @@ void nape_inertia_prepare_motion(int32_t raw_x, int32_t raw_y, uint32_t received
     *motion_x = nape_cursor_accel_scale(raw_x, &inertia_state.accel_x);
     *motion_y = nape_cursor_accel_scale(raw_y, &inertia_state.accel_y);
 
-    if (!allow_inertia) {
+    if (!IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_INERTIA) || !allow_inertia) {
         cancel_locked();
         k_spin_unlock(&inertia_state.lock, key);
         return;
@@ -197,6 +197,7 @@ static int inertia_processor_handle_event(const struct device *dev, struct input
     if (event->dev == NAPE_INPUT_NODE(nape_inertia_cursor)) {
         if (event->type != INPUT_EV_REL ||
             (event->code != INPUT_REL_X && event->code != INPUT_REL_Y) ||
+            !IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_INERTIA) ||
             scroll_layer_active() || !atomic_get(&inertia_armed) ||
             !nape_cursor_inertia_event_is_current(
                 event->value, (uint32_t)atomic_get(&inertia_epoch))) {
@@ -246,7 +247,7 @@ static void inertia_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
     const uint32_t epoch = (uint32_t)atomic_get(&inertia_epoch);
-    if (scroll_layer_active()) {
+    if (!IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_INERTIA) || scroll_layer_active()) {
         reset_if_epoch(epoch);
         return;
     }

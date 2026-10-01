@@ -21,6 +21,13 @@ include:
     cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_fixed_brightness.conf
     artifact-name: cornix_prospector_nape_bridge_nosd
 
+  # Same cursor acceleration and scroll filtering, with cursor inertia disabled.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: studio-rpc-usb-uart nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_no_inertia.conf
+    artifact-name: cornix_prospector_nape_bridge_no_inertia_nosd
+
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
     snippet: studio-rpc-usb-uart nrf52840-nosd

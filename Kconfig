@@ -3,6 +3,14 @@ config ZMK_NAPE_BRIDGE
     depends on BT && BT_CENTRAL && BT_GATT_CLIENT && ZMK_POINTING && ZMK_SPLIT_ROLE_CENTRAL
     default y if SHIELD_CORNIX_NAPE_BRIDGE
 
+config ZMK_NAPE_CURSOR_INERTIA
+    bool "Nape cursor inertia"
+    depends on ZMK_NAPE_BRIDGE
+    default y
+    help
+      Add decaying cursor movement after a flick. Disable for comparison
+      without changing cursor acceleration or the FN_SCROLL path.
+
 config ZMK_NAPE_NAME
     string "BLE HID device name to pair"
     default "Nape Pro"

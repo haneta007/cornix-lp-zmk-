@@ -3,6 +3,12 @@ Total output lines: 239
 
 # Nape Pro → Prospector → Cornix 引き継ぎ
 
+## 2026-10-01 カーソル飛び切り分け用：慣性なし版
+
+`cornix_prospector_nape_bridge_no_inertia_nosd.uf2`は比較用。通常版の固定輝度80、カーソル加速度最大約1.4倍、スクロール横ブレ対策、keymap、BLE設定を維持し、`CONFIG_ZMK_NAPE_CURSOR_INERTIA=n`だけを追加する。通常版`cornix_prospector_nape_bridge_nosd.uf2`は慣性ONのまま残す。慣性OFFでは加速度処理後にtrackingを打ち切り、synthetic eventの受信側とwork側でも慣性OFFを確認する。スクロールに慣性はない。
+
+最新buildの`firmware`から比較用UF2をProspectorだけへ手動で書き、同じPC・接続・置き方でゆっくり動かす。カーソル飛びが消えるか、止めた後の追加移動がなくなるか、FN_SCROLL・button・物理wheel・Cornix文字入力を確認する。飛びが消えた場合も原因確定ではなく慣性処理関与の手掛かりとし、残る場合は生XY値とBLE通知間隔をログで確認する。通常版UF2を書き戻せば慣性ONへ戻せる。bond reset・左右の書き換えは不要、自動flashはしない。
+
 ## 2026-10-01 カーソル加速度と横スクロール誤入力対策
 
 カーソル加速度上限はQ8値358（358/256 ≒ 1.3984倍）。低速2 counts以下は1倍、12 counts以上は上限、その間は線形補間する。慣性設定は維持するが、加速後の速度を使うため強い操作の慣性初速も少し増える。
