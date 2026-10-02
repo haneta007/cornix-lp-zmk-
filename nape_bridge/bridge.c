@@ -103,6 +103,7 @@ struct nape_timing_stats {
     uint32_t queue_peak;
     uint32_t motion_count;
     uint32_t queue_age_max_ms;
+    uint32_t rx_lock_wait_max_ms;
     uint32_t raw_max;
     uint32_t output_max;
     uint32_t emit_errors;
@@ -115,7 +116,8 @@ static uint32_t timing_magnitude(int32_t value) {
 }
 
 /* Called under the existing queue lock; BLE RX only updates small counters. */
-static void timing_received(uint32_t now) {
+static void timing_received(uint32_t now, uint32_t lock_wait_ms) {
+    nape_timing.rx_lock_wait_max_ms = MAX(nape_timing.rx_lock_wait_max_ms, lock_wait_ms);
     if (nape_timing.have_rx) {
         nape_timing.rx_gap_max_ms = MAX(nape_timing.rx_gap_max_ms,
                                        now - nape_timing.last_rx_ms);
@@ -156,9 +158,9 @@ static void timing_log(void) {
     nape_timing.have_rx = snapshot.have_rx;
     k_spin_unlock(&nape_input_queue_lock, key);
     LOG_INF("NAPE: timing span_ms=%u rx=%u motion=%u rx_gap_max_ms=%u q_peak=%u "
-            "age_max_ms=%u raw_max=%u out_max=%u overflow_total=%u emit_errors=%u",
+            "age_max_ms=%u rx_lock_wait_max_ms=%u raw_max=%u out_max=%u overflow_total=%u emit_errors=%u",
             span, snapshot.rx_count, snapshot.motion_count, snapshot.rx_gap_max_ms,
-            snapshot.queue_peak, snapshot.queue_age_max_ms, snapshot.raw_max,
+            snapshot.queue_peak, snapshot.queue_age_max_ms, snapshot.rx_lock_wait_max_ms, snapshot.raw_max,
             snapshot.output_max, overflow, snapshot.emit_errors);
 }
 #endif
@@ -572,10 +574,16 @@ static bool accept_pending_conn(struct bt_conn *conn) {
 static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_params *params,
                              const void *data, uint16_t length) {
     if (!data) return BT_GATT_ITER_STOP;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    uint32_t rx_entered_ms = k_uptime_get_32();
+#endif
     k_mutex_lock(&nape_state_lock, K_FOREVER);
     bool active = conn == bridge.conn;
     uint32_t generation = bridge.generation;
     k_mutex_unlock(&nape_state_lock);
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    uint32_t rx_lock_wait_ms = k_uptime_get_32() - rx_entered_ms;
+#endif
     if (!active) return BT_GATT_ITER_CONTINUE;
     struct gatt_report *report = CONTAINER_OF(params, struct gatt_report, subscription);
     if (length > NAPE_INPUT_MAX_NOTIFICATION) {
@@ -591,7 +599,7 @@ static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_para
     bool overflowed = nape_input_queue_push(&nape_input_queue, &queued);
     uint32_t overflow_count = nape_input_queue.overflow_count;
 #if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
-    timing_received(queued.received_ms);
+    timing_received(queued.received_ms, rx_lock_wait_ms);
 #endif
     k_spin_unlock(&nape_input_queue_lock, key);
     if (overflowed) LOG_WRN("NAPE: input queue overflow count=%u", overflow_count);

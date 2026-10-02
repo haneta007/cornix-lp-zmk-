@@ -28,13 +28,14 @@ NAPE: BLE interval_us=... latency=... timeout_ms=...
 接続時の実際のBLEパラメータ。BLE updatedは接続後の変更。
 例えばinterval_us=7500は7.5ms。接続要求の初期値は既存どおり30～50msで、短縮要求は追加しません。
 
-NAPE: timing span_ms=... rx=... motion=... rx_gap_max_ms=... q_peak=... age_max_ms=... raw_max=... out_max=... overflow_total=... emit_errors=...
+NAPE: timing span_ms=... rx=... motion=... rx_gap_max_ms=... q_peak=... age_max_ms=... rx_lock_wait_max_ms=... raw_max=... out_max=... overflow_total=... emit_errors=...
 
 - span_ms: 集計時間。入力処理が動いたとき、前回から約1秒以上経過していれば出力。静止中は定期出力しない。
 - rx: BLE Input Report通知の件数。button/wheel通知も含む。motionは処理された非ゼロXY reportの件数。
 - rx_gap_max_ms: 通知間隔の最大値。意図的な静止・スリープも含むため、値だけで通信異常と判定しない。
 - q_peak: 受信キュー件数のピーク。上限4。上限到達だけでは欠落の証明ではない。
 - age_max_ms: 非ゼロXYを処理するまでの最大待ち時間。BLE callback内で時刻取得してから入力work内で変換後までの時間。
+- rx_lock_wait_max_ms: BLE通知callback内でBridge状態のロックを取得して離すまでの最大時間。age_max_msには入らない、この入口での待ちを別測定。
 - raw_max / out_max: 各集計窓内のXY各軸の最大絶対値。FN_SCROLL OFFのraw版では一致するはず。同一reportのペア値をログに出しているわけではない。
 - overflow_total: キュー溢れ累計。増加すると古いreportが捨てられた。再接続でもリセットしない。
 - emit_errors: 当該集計窓内のvirtual inputへ相対イベントを入れる際の失敗件数。physical wheelも対象。USB送信成功そのものの確認値ではない。
