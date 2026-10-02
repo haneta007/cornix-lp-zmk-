@@ -1,6 +1,12 @@
 name: Build ZMK firmware
 on:
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Optional successful build run ID to package without rebuilding
+        required: false
+        default: ""
+        type: string
   push:
     branches:
       - "**"
@@ -11,6 +17,7 @@ on:
       - "config-baseline/**"
       - "build-baseline.yaml"
       - "build.yaml"
+      - "scripts/package_daily_firmware.py"
       - "nape_bridge/**"
       - "Kconfig"
       - "CMakeLists.txt"
@@ -26,6 +33,7 @@ jobs:
         run: echo "5cbe5c660bb6e60194c6c0a275a1621519d490c41c01e02963bfd3277391ef7a  config-baseline/cornix.keymap" | sha256sum --check
 
   build:
+    if: ${{ !inputs.source_run_id }}
     needs: validate-baseline
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
     with:
@@ -35,9 +43,56 @@ jobs:
   build-baseline:
     # The reusable workflow merge job consumes the shared artifact-* pattern.
     # Run it after the main matrix has merged its artifacts to avoid a race.
+    if: ${{ !inputs.source_run_id }}
     needs: [validate-baseline, build]
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@9ebbeff0a8b69a42f14aec022cdf16c7a107b9e0
     with:
       build_matrix_path: build-baseline.yaml
       config_path: config-baseline
       archive_name: firmware-baseline-dev
+
+  package-daily:
+    # An explicit previous run packages known-good bytes without compiling.
+    if: ${{ always() && needs.validate-baseline.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.source_run_id != '')) }}
+    needs: [validate-baseline, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate previous source build
+        if: ${{ inputs.source_run_id }}
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > source-run.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path("source-run.json").read_text())
+          assert run["conclusion"] == "success", "Source firmware build must have succeeded"
+          assert run["path"] == ".github/workflows/build.yml", "Expected Build ZMK firmware"
+          assert run["head_repository"]["full_name"] == os.environ["GITHUB_REPOSITORY"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"sha={run['head_sha']}\n")
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: source-firmware
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id || github.run_id }}
+      - name: Package daily UF2 files
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha || github.sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id || github.run_id }}
+        run: python3 scripts/package_daily_firmware.py source-firmware daily-firmware --sha "$SOURCE_SHA" --run-id "$SOURCE_RUN_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-daily
+          path: daily-firmware/
+          if-no-files-found: error

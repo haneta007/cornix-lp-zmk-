@@ -1,3 +1,11 @@
+## 2026-10-02 日常用配布セット
+
+GitHub Actionsの`firmware-daily`だけをダウンロードすれば、通常の慣性あり版・慣性なし版・Cornix関連・リセット用に絞ったセットを取得できます。`Prospector`・`Cornix`・`Reset`のフォルダと`README.txt`で用途を分けています。通常使用は`Prospector/cornix_prospector_nape_bridge_nosd.uf2`です。
+
+UF2は成功したビルドからそのままコピーし、SHA256を検証します。Napeコード・依存commit・keymap・通常ビルドと切り戻し構成は変更しません。全成果物は従来の`firmware`にも残ります。ログ版・診断版・bond削除専用版は日常用セットから除外しています。
+
+今後の通常ビルドは日常用セットも生成します。既存の成功ビルドから再配布する場合は`Build ZMK firmware`を手動実行し、任意の`source_run_id`欄に元の成功run IDを指定してください。この処理は再ビルドや書き込みを行いません。リセット用は通常更新に使用しません。
+
 Warning: truncated output (original token count: 10589)
 Total output lines: 239
 
