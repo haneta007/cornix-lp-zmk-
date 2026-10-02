@@ -93,6 +93,76 @@ static struct nape_input_queue nape_input_queue;
 static struct k_spinlock nape_input_queue_lock;
 static uint32_t retry_disconnect_generation;
 
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+#define NAPE_TIMING_LOG_INTERVAL_MS 1000u
+struct nape_timing_stats {
+    uint32_t last_rx_ms;
+    uint32_t last_log_ms;
+    uint32_t rx_count;
+    uint32_t rx_gap_max_ms;
+    uint32_t queue_peak;
+    uint32_t motion_count;
+    uint32_t queue_age_max_ms;
+    uint32_t raw_max;
+    uint32_t output_max;
+    uint32_t emit_errors;
+    bool have_rx;
+};
+static struct nape_timing_stats nape_timing;
+
+static uint32_t timing_magnitude(int32_t value) {
+    return value < 0 ? (uint32_t)(-(int64_t)value) : (uint32_t)value;
+}
+
+/* Called under the existing queue lock; BLE RX only updates small counters. */
+static void timing_received(uint32_t now) {
+    if (nape_timing.have_rx) {
+        nape_timing.rx_gap_max_ms = MAX(nape_timing.rx_gap_max_ms,
+                                       now - nape_timing.last_rx_ms);
+    }
+    nape_timing.last_rx_ms = now;
+    nape_timing.have_rx = true;
+    nape_timing.rx_count++;
+    nape_timing.queue_peak = MAX(nape_timing.queue_peak, nape_input_queue.count);
+}
+
+static void timing_motion(uint32_t received_ms, int32_t x, int32_t y,
+                          int32_t output_x, int32_t output_y) {
+    uint32_t age = k_uptime_get_32() - received_ms;
+    k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+    nape_timing.motion_count++;
+    nape_timing.queue_age_max_ms = MAX(nape_timing.queue_age_max_ms, age);
+    nape_timing.raw_max = MAX(nape_timing.raw_max,
+                             MAX(timing_magnitude(x), timing_magnitude(y)));
+    nape_timing.output_max = MAX(nape_timing.output_max,
+                                MAX(timing_magnitude(output_x), timing_magnitude(output_y)));
+    k_spin_unlock(&nape_input_queue_lock, key);
+}
+
+/* Runs in the existing input work, never in BLE RX and never while spinlocked. */
+static void timing_log(void) {
+    uint32_t now = k_uptime_get_32();
+    k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+    uint32_t span = now - nape_timing.last_log_ms;
+    if (span < NAPE_TIMING_LOG_INTERVAL_MS) {
+        k_spin_unlock(&nape_input_queue_lock, key);
+        return;
+    }
+    struct nape_timing_stats snapshot = nape_timing;
+    uint32_t overflow = nape_input_queue.overflow_count;
+    memset(&nape_timing, 0, sizeof(nape_timing));
+    nape_timing.last_log_ms = now;
+    nape_timing.last_rx_ms = snapshot.last_rx_ms;
+    nape_timing.have_rx = snapshot.have_rx;
+    k_spin_unlock(&nape_input_queue_lock, key);
+    LOG_INF("NAPE: timing span_ms=%u rx=%u motion=%u rx_gap_max_ms=%u q_peak=%u "
+            "age_max_ms=%u raw_max=%u out_max=%u overflow_total=%u emit_errors=%u",
+            span, snapshot.rx_count, snapshot.motion_count, snapshot.rx_gap_max_ms,
+            snapshot.queue_peak, snapshot.queue_age_max_ms, snapshot.raw_max,
+            snapshot.output_max, overflow, snapshot.emit_errors);
+}
+#endif
+
 static void scan_work_handler(struct k_work *work);
 static void scan_timeout_handler(struct k_work *work);
 static void candidate_work_handler(struct k_work *work);
@@ -520,6 +590,9 @@ static uint8_t report_notify(struct bt_conn *conn, struct bt_gatt_subscribe_para
     k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
     bool overflowed = nape_input_queue_push(&nape_input_queue, &queued);
     uint32_t overflow_count = nape_input_queue.overflow_count;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    timing_received(queued.received_ms);
+#endif
     k_spin_unlock(&nape_input_queue_lock, key);
     if (overflowed) LOG_WRN("NAPE: input queue overflow count=%u", overflow_count);
     k_work_submit(&nape_input_work);
@@ -794,6 +867,29 @@ static void count_bond(const struct bt_bond_info *info, void *user_data) {
     (*count)++;
 }
 
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+static void log_connection_timing(struct bt_conn *conn) {
+    struct bt_conn_info info;
+    int err = bt_conn_get_info(conn, &info);
+    if (err) {
+        LOG_WRN("NAPE: connection timing unavailable (%d)", err);
+        return;
+    }
+    if (info.type == BT_CONN_TYPE_LE) {
+        LOG_INF("NAPE: BLE interval_us=%u latency=%u timeout_ms=%u",
+                (uint32_t)info.le.interval * 1250u, info.le.latency,
+                (uint32_t)info.le.timeout * 10u);
+    }
+}
+
+static void connection_parameters_updated(struct bt_conn *conn, uint16_t interval,
+                                          uint16_t latency, uint16_t timeout) {
+    if (!active_conn(conn)) return;
+    LOG_INF("NAPE: BLE updated interval_us=%u latency=%u timeout_ms=%u",
+            (uint32_t)interval * 1250u, latency, (uint32_t)timeout * 10u);
+}
+#endif
+
 static void connected(struct bt_conn *conn, uint8_t err) {
     if (!accept_pending_conn(conn)) return;
     atomic_clear(&bridge.connecting);
@@ -809,6 +905,13 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         return;
     }
     LOG_INF("NAPE: connected");
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    k_spinlock_key_t timing_key = k_spin_lock(&nape_input_queue_lock);
+    memset(&nape_timing, 0, sizeof(nape_timing));
+    nape_timing.last_log_ms = k_uptime_get_32();
+    k_spin_unlock(&nape_input_queue_lock, timing_key);
+    log_connection_timing(conn);
+#endif
     int rc = bt_conn_set_security(conn, BT_SECURITY_L2);
     if (rc && rc != -EALREADY) {
         uint8_t bonds = 0;
@@ -844,6 +947,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     bridge.map_length = 0;
     k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
     nape_input_queue_request_button_release(&nape_input_queue);
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    memset(&nape_timing, 0, sizeof(nape_timing));
+#endif
     k_spin_unlock(&nape_input_queue_lock, key);
     /* Serialize reset against parsing and tracking the final queued report. */
     nape_inertia_reset();
@@ -871,6 +977,9 @@ BT_CONN_CB_DEFINE(nape_connection_callbacks) = {
     .connected = connected,
     .disconnected = disconnected,
     .security_changed = security_changed,
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+    .le_param_updated = connection_parameters_updated,
+#endif
 };
 
 static int emit_relative(const struct device *dev, uint16_t code, int32_t value, bool sync) {
@@ -878,7 +987,14 @@ static int emit_relative(const struct device *dev, uint16_t code, int32_t value,
     while (value) {
         int32_t chunk = CLAMP(value, INT16_MIN, INT16_MAX);
         int err = input_report_rel(dev, code, chunk, sync && value == chunk, K_NO_WAIT);
-        if (err) return err;
+        if (err) {
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+            k_spinlock_key_t key = k_spin_lock(&nape_input_queue_lock);
+            nape_timing.emit_errors++;
+            k_spin_unlock(&nape_input_queue_lock, key);
+#endif
+            return err;
+        }
         value -= chunk;
     }
     return 0;
@@ -931,6 +1047,9 @@ static void input_work_handler(struct k_work *work) {
             int32_t motion_y;
             nape_inertia_prepare_motion(parsed.x, parsed.y, queued.received_ms,
                                         !controls_active, &motion_x, &motion_y);
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+            timing_motion(queued.received_ms, parsed.x, parsed.y, motion_x, motion_y);
+#endif
             emit_relative(motion, INPUT_REL_X, motion_x, !motion_y);
             emit_relative(motion, INPUT_REL_Y, motion_y, true);
         }
@@ -943,6 +1062,9 @@ static void input_work_handler(struct k_work *work) {
             }
         }
         bridge.held_buttons = next_held_buttons;
+#if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
+        timing_log();
+#endif
     }
     k_mutex_unlock(&nape_state_lock);
 }

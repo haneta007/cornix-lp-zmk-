@@ -1,3 +1,7 @@
+## 2026-10-02 カーソル飛びの比較・診断版
+
+firmware-cursor-checkに慣性・加速度OFFの通常比較版と、同じ動作にUSB timingログを加えた診断版を用意しました。書き込み・比較・ログ項目は[NAPE_CURSOR_DIAGNOSTICS.md](NAPE_CURSOR_DIAGNOSTICS.md)を参照してください。通常版とfirmware-dailyは既存どおりです。BLE通信間隔の変更やbond削除は行いません。
+
 ## 2026-10-02 日常用配布セット
 
 GitHub Actionsの`firmware-daily`だけをダウンロードすれば、通常の慣性あり版・慣性なし版・Cornix関連・リセット用に絞ったセットを取得できます。`Prospector`・`Cornix`・`Reset`のフォルダと`README.txt`で用途を分けています。通常使用は`Prospector/cornix_prospector_nape_bridge_nosd.uf2`です。

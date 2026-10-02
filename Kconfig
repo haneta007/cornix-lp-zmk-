@@ -11,6 +11,23 @@ config ZMK_NAPE_CURSOR_INERTIA
       Add decaying cursor movement after a flick. Disable for comparison
       without changing cursor acceleration or the FN_SCROLL path.
 
+config ZMK_NAPE_CURSOR_ACCELERATION
+    bool "Nape cursor acceleration"
+    depends on ZMK_NAPE_BRIDGE
+    default y
+    help
+      Disable to pass raw cursor XY through without the firmware gain.
+      The FN_SCROLL filter and scaler remain unchanged.
+
+config ZMK_NAPE_TIMING_DIAGNOSTICS
+    bool "Aggregate Nape input timing logs"
+    depends on ZMK_NAPE_BRIDGE
+    default n
+    select LOG
+    help
+      Log negotiated BLE parameters and aggregate input timing once per
+      second while reports are processed. Adds no thread or workqueue.
+
 config ZMK_NAPE_NAME
     string "BLE HID device name to pair"
     default "Nape Pro"

@@ -96,3 +96,40 @@ jobs:
           name: firmware-daily
           path: daily-firmware/
           if-no-files-found: error
+
+  package-cursor-check:
+    if: ${{ !inputs.source_run_id }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: source-firmware
+      - name: Select raw cursor comparison firmware
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, shutil
+          source = Path("source-firmware")
+          output = Path("cursor-check")
+          output.mkdir()
+          hashes = []
+          for name in ("cornix_prospector_nape_raw_cursor_nosd.uf2",
+                       "cornix_prospector_nape_raw_cursor_usb_log_nosd.uf2"):
+              matches = list(source.rglob(name))
+              assert len(matches) == 1, f"Expected exactly one {name}"
+              original = matches[0].read_bytes()
+              target = output / name
+              target.write_bytes(original)
+              assert target.read_bytes() == original
+              hashes.append(f"{hashlib.sha256(original).hexdigest()}  {name}")
+          (output / "SHA256SUMS.txt").write_text("\n".join(hashes) + "\n")
+          shutil.copyfile("NAPE_CURSOR_DIAGNOSTICS.md", output / "README.md")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-cursor-check
+          path: cursor-check/
+          if-no-files-found: error

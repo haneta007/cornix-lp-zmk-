@@ -309,6 +309,24 @@ def main() -> None:
     require("artifact-name: cornix_prospector_nape_bridge_nosd" in build,
             "the normal Nape firmware artifact name must remain unchanged")
 
+    raw = (ROOT / "config/nape_raw_cursor.conf").read_text(encoding="utf-8")
+    raw_settings = {line.strip() for line in raw.splitlines() if line.startswith("CONFIG_")}
+    require(raw_settings == normal_settings | {"CONFIG_ZMK_NAPE_CURSOR_INERTIA=n",
+                                               "CONFIG_ZMK_NAPE_CURSOR_ACCELERATION=n"},
+            "raw comparison must change only inertia and firmware cursor gain")
+    require("if (IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_ACCELERATION))" in inertia and
+            "*motion_x = raw_x;" in inertia and "*motion_y = raw_y;" in inertia,
+            "raw comparison must pass cursor XY through")
+    diag = (ROOT / "config/nape_raw_cursor_usb_log.conf").read_text(encoding="utf-8")
+    diag_settings = {line.strip() for line in diag.splitlines() if line.startswith("CONFIG_")}
+    require(diag_settings == raw_settings | {"CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS=y",
+                                             "CONFIG_ZMK_STUDIO=n",
+                                             "CONFIG_LOG_BUFFER_SIZE=1024"},
+            "timing comparison must preserve raw motion and add bounded USB logging")
+    require("artifact-name: cornix_prospector_nape_raw_cursor_nosd" in build and
+            "artifact-name: cornix_prospector_nape_raw_cursor_usb_log_nosd" in build,
+            "both raw cursor comparison images must be built")
+
     print("Nape cursor validation: PASS (Layer 5 scroll preserved; cursor acceleration/inertia isolated)")
 
 

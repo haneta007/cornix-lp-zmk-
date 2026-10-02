@@ -21,6 +21,20 @@ include:
     cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_fixed_brightness.conf
     artifact-name: cornix_prospector_nape_bridge_nosd
 
+  # Raw cursor comparison: no firmware acceleration or synthetic inertia.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: studio-rpc-usb-uart nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_raw_cursor.conf
+    artifact-name: cornix_prospector_nape_raw_cursor_nosd
+
+  # Same raw cursor behavior with bounded USB CDC timing statistics.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: zmk-usb-logging nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_raw_cursor_usb_log.conf
+    artifact-name: cornix_prospector_nape_raw_cursor_usb_log_nosd
+
   # Same cursor acceleration and scroll filtering, with cursor inertia disabled.
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge

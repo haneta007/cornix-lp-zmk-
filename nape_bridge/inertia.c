@@ -139,8 +139,13 @@ void nape_inertia_prepare_motion(int32_t raw_x, int32_t raw_y, uint32_t received
     }
 
     nape_scroll_axis_filter_reset(&inertia_state.axis_filter);
-    *motion_x = nape_cursor_accel_scale(raw_x, &inertia_state.accel_x);
-    *motion_y = nape_cursor_accel_scale(raw_y, &inertia_state.accel_y);
+    if (IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_ACCELERATION)) {
+        *motion_x = nape_cursor_accel_scale(raw_x, &inertia_state.accel_x);
+        *motion_y = nape_cursor_accel_scale(raw_y, &inertia_state.accel_y);
+    } else {
+        *motion_x = raw_x;
+        *motion_y = raw_y;
+    }
 
     if (!IS_ENABLED(CONFIG_ZMK_NAPE_CURSOR_INERTIA) || !allow_inertia) {
         cancel_locked();
