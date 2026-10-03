@@ -42,7 +42,7 @@ NAPE: timing span_ms=... rx=... motion=... rx_gap_max_ms=... q_peak=... age_max_
 
 集計stateは切断・接続時に初期化します。通常版では集計stateをコンパイルしません。
 追加のthread、workqueue、周期work、大きなbuffer、BLE接続・設定変更はありません。
-2026-10-03からCONFIG_ZMK_LOG_LEVEL=2としてZMKの大量debugログを抑制し、NapeのINFO集計を残しています。
+2026-10-03からCONFIG_ZMK_LOGGING_MINIMAL=y と CONFIG_ZMK_LOG_LEVEL_WRN=yとしてZMKの大量debugログを抑制し、NapeのINFO集計を残しています。
 診断ログ自体が処理時間に影響する可能性があるため、raw通常版との比較も必要です。
 
 ## USBログを取得する

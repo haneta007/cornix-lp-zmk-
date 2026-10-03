@@ -322,7 +322,8 @@ def main() -> None:
     require(diag_settings == raw_settings | {"CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS=y",
                                              "CONFIG_ZMK_STUDIO=n",
                                              "CONFIG_LOG_BUFFER_SIZE=1024",
-                                             "CONFIG_ZMK_LOG_LEVEL=2"},
+                                             "CONFIG_ZMK_LOGGING_MINIMAL=y",
+                                             "CONFIG_ZMK_LOG_LEVEL_WRN=y"},
             "timing comparison must preserve raw motion and add bounded USB logging")
     require("artifact-name: cornix_prospector_nape_raw_cursor_nosd" in build and
             "artifact-name: cornix_prospector_nape_raw_cursor_usb_log_nosd" in build,
