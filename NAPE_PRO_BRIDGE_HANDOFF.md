@@ -1,3 +1,7 @@
+## 2026-10-03 Nape latency=0比較版
+
+firmware-latency-checkに、Napeの変更要求だけlatency=0へ調整するrawカーソル版（USBログあり／なし）と、従来latencyの静かな対照ログ版を用意しました。通常版・Cornix接続設定・依存commitは維持しています。手順は[NAPE_LATENCY_COMPARISON.md](NAPE_LATENCY_COMPARISON.md)を参照してください。実機での適用と改善は確認待ちです。
+
 ## 2026-10-02 カーソル飛びの比較・診断版
 
 firmware-cursor-checkに慣性・加速度OFFの通常比較版と、同じ動作にUSB timingログを加えた診断版を用意しました。書き込み・比較・ログ項目は[NAPE_CURSOR_DIAGNOSTICS.md](NAPE_CURSOR_DIAGNOSTICS.md)を参照してください。通常版とfirmware-dailyは既存どおりです。BLE通信間隔の変更やbond削除は行いません。

@@ -321,11 +321,19 @@ def main() -> None:
     diag_settings = {line.strip() for line in diag.splitlines() if line.startswith("CONFIG_")}
     require(diag_settings == raw_settings | {"CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS=y",
                                              "CONFIG_ZMK_STUDIO=n",
-                                             "CONFIG_LOG_BUFFER_SIZE=1024"},
+                                             "CONFIG_LOG_BUFFER_SIZE=1024",
+                                             "CONFIG_ZMK_LOG_LEVEL=2"},
             "timing comparison must preserve raw motion and add bounded USB logging")
     require("artifact-name: cornix_prospector_nape_raw_cursor_nosd" in build and
             "artifact-name: cornix_prospector_nape_raw_cursor_usb_log_nosd" in build,
             "both raw cursor comparison images must be built")
+
+    for conf, expected in (("nape_raw_cursor_latency0.conf", raw_settings),
+                           ("nape_raw_cursor_latency0_usb_log.conf", diag_settings)):
+        settings = {line.strip() for line in (ROOT / "config" / conf).read_text(
+            encoding="utf-8").splitlines() if line.startswith("CONFIG_")}
+        require(settings == expected | {"CONFIG_ZMK_NAPE_ZERO_LATENCY=y"},
+                "latency comparison must change only Nape peripheral latency policy")
 
     print("Nape cursor validation: PASS (Layer 5 scroll preserved; cursor acceleration/inertia isolated)")
 

@@ -981,10 +981,28 @@ static void security_changed(struct bt_conn *conn, bt_security_t level,
     }
 }
 
+
+#if IS_ENABLED(CONFIG_ZMK_NAPE_ZERO_LATENCY)
+static bool connection_parameters_requested(struct bt_conn *conn,
+                                            struct bt_le_conn_param *param) {
+    /* Returning true for other peers leaves all Cornix split parameters intact. */
+    if (!active_conn(conn)) return true;
+    uint16_t requested_latency = param->latency;
+    param->latency = 0;
+    LOG_INF("NAPE: latency policy requested=%u accepted=0 interval_min_us=%u interval_max_us=%u",
+            requested_latency, (uint32_t)param->interval_min * 1250u,
+            (uint32_t)param->interval_max * 1250u);
+    return true;
+}
+#endif
+
 BT_CONN_CB_DEFINE(nape_connection_callbacks) = {
     .connected = connected,
     .disconnected = disconnected,
     .security_changed = security_changed,
+#if IS_ENABLED(CONFIG_ZMK_NAPE_ZERO_LATENCY)
+    .le_param_req = connection_parameters_requested,
+#endif
 #if IS_ENABLED(CONFIG_ZMK_NAPE_TIMING_DIAGNOSTICS)
     .le_param_updated = connection_parameters_updated,
 #endif

@@ -28,6 +28,15 @@ config ZMK_NAPE_TIMING_DIAGNOSTICS
       Log negotiated BLE parameters and aggregate input timing once per
       second while reports are processed. Adds no thread or workqueue.
 
+config ZMK_NAPE_ZERO_LATENCY
+    bool "Use zero peripheral latency for Nape parameter requests"
+    depends on ZMK_NAPE_BRIDGE
+    default n
+    help
+      Experimental comparison: accept Nape peer parameter requests with
+      latency zero, leaving their interval and supervision timeout unchanged.
+      Does not modify Cornix links. May increase Nape battery consumption.
+
 config ZMK_NAPE_NAME
     string "BLE HID device name to pair"
     default "Nape Pro"

@@ -35,6 +35,19 @@ include:
     cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_raw_cursor_usb_log.conf
     artifact-name: cornix_prospector_nape_raw_cursor_usb_log_nosd
 
+  # Same raw cursor with Nape-only zero peripheral latency policy.
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: studio-rpc-usb-uart nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_raw_cursor_latency0.conf
+    artifact-name: cornix_prospector_nape_raw_cursor_latency0_nosd
+
+  - board: xiao_ble//zmk
+    shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
+    snippet: zmk-usb-logging nrf52840-nosd
+    cmake-args: -DKEYMAP_FILE=$GITHUB_WORKSPACE/config/cornix.keymap -DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/config/nape_raw_cursor_latency0_usb_log.conf
+    artifact-name: cornix_prospector_nape_raw_cursor_latency0_usb_log_nosd
+
   # Same cursor acceleration and scroll filtering, with cursor inertia disabled.
   - board: xiao_ble//zmk
     shield: cornix_dongle_adapter prospector_adapter cornix_nape_bridge
