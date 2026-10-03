@@ -1,3 +1,7 @@
+## 2026-10-03 latency=0・慣性・加速度ONの通常使用版
+
+firmware-latency0-normalはcornix_prospector_nape_bridge_latency0_nosd.uf2だけを含みます。既存通常版の慣性・最大約1.4倍の加速度・Studio・固定輝度80を保ち、Nape専用latency=0方針を有効にします。Nape/Cornix本体への自動書き込みは行いません。raw診断版でユーザーが飛びの解消を報告しましたが、この慣性・加速度ON版の実機確認はまだ必要です。手順は[NAPE_LATENCY_COMPARISON.md](NAPE_LATENCY_COMPARISON.md)を参照してください。
+
 ## 2026-10-03 Nape latency=0比較版
 
 firmware-latency-checkに、Napeの変更要求だけlatency=0へ調整するrawカーソル版（USBログあり／なし）と、従来latencyの静かな対照ログ版を用意しました。通常版・Cornix接続設定・依存commitは維持しています。手順は[NAPE_LATENCY_COMPARISON.md](NAPE_LATENCY_COMPARISON.md)を参照してください。実機での適用と改善は確認待ちです。

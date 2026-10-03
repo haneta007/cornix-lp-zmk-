@@ -336,6 +336,16 @@ def main() -> None:
         require(settings == expected | {"CONFIG_ZMK_NAPE_ZERO_LATENCY=y"},
                 "latency comparison must change only Nape peripheral latency policy")
 
+    latency_normal = (ROOT / "config/nape_latency0_normal.conf").read_text(encoding="utf-8")
+    latency_normal_settings = {line.strip() for line in latency_normal.splitlines()
+                               if line.startswith("CONFIG_")}
+    require(latency_normal_settings == normal_settings | {
+                "CONFIG_ZMK_NAPE_ZERO_LATENCY=y", "CONFIG_ZMK_NAPE_CURSOR_INERTIA=y",
+                "CONFIG_ZMK_NAPE_CURSOR_ACCELERATION=y", "CONFIG_ZMK_STUDIO=y"},
+            "normal latency-zero image must preserve normal settings and all cursor features")
+    require("artifact-name: cornix_prospector_nape_bridge_latency0_nosd" in build,
+            "normal latency-zero firmware must have a separate artifact")
+
     print("Nape cursor validation: PASS (Layer 5 scroll preserved; cursor acceleration/inertia isolated)")
 
 

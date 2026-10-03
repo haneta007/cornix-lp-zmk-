@@ -1,6 +1,14 @@
-# Nape latency=0 比較版
+# Nape latency=0 通常版・比較版
 
-## 最初に書き込むもの
+## 慣性・加速度ONの通常使用版
+
+firmware-latency0-normalにはcornix_prospector_nape_bridge_latency0_nosd.uf2だけが入っています。
+Prospectorだけへ手動書き込みます。慣性ON・加速度ON（最大約1.4倍）・Studioあり・固定輝度80で、Napeのlatency=0方針を有効にします。
+既存の通常版は維持します。リセットやCornix左右の書き込みは不要です。
+新しい通常版でもカーソル飛びが再発しないか、FNスクロール・ボタン・物理wheel・Cornix入力・Studioを実機確認してください。
+
+
+## 診断・比較用に書き込むもの
 
 firmware-latency-checkをダウンロードし、
 cornix_prospector_nape_raw_cursor_latency0_usb_log_nosd.uf2
@@ -10,8 +18,9 @@ cornix_prospector_nape_raw_cursor_latency0_usb_log_nosd.uf2
 ZMKの大量デバッグ出力は抑え、NapeのBLEパラメータ・約1秒の入力集計を残します。
 診断USBポートはログ用なのでStudio RPCは一時的にOFFです。
 
-## 同梱した3版
+## firmware-latency-checkに同梱した4版
 
+- cornix_prospector_nape_bridge_latency0_nosd.uf2: 慣性・加速度・Studioを有効にした通常使用版。
 - cornix_prospector_nape_raw_cursor_latency0_usb_log_nosd.uf2: latency=0方針＋USBログ。最初の確認用。
 - cornix_prospector_nape_raw_cursor_latency0_nosd.uf2: 同じlatency方針、ログなし、Studioあり。普段使いの比較用。
 - cornix_prospector_nape_raw_cursor_usb_log_nosd.uf2: latency方針は従来どおりで、余分なZMKログのみ抑制。A/B比較の対照版。

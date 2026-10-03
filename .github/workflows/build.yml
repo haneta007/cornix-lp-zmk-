@@ -153,7 +153,8 @@ jobs:
           output = Path("latency-check")
           output.mkdir()
           hashes = []
-          for name in ("cornix_prospector_nape_raw_cursor_usb_log_nosd.uf2",
+          for name in ("cornix_prospector_nape_bridge_latency0_nosd.uf2",
+                       "cornix_prospector_nape_raw_cursor_usb_log_nosd.uf2",
                        "cornix_prospector_nape_raw_cursor_latency0_nosd.uf2",
                        "cornix_prospector_nape_raw_cursor_latency0_usb_log_nosd.uf2"):
               matches = list(source.rglob(name))
@@ -170,4 +171,9 @@ jobs:
         with:
           name: firmware-latency-check
           path: latency-check/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-latency0-normal
+          path: latency-check/cornix_prospector_nape_bridge_latency0_nosd.uf2
           if-no-files-found: error
