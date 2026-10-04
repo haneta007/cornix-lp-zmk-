@@ -1,5 +1,19 @@
 # Nape Pro → Prospector → Cornix 引き継ぎ
 
+## 2026-09-29 FN_SCROLLと慣性スクロール
+
+`feat/nape-scroll-inertia`では既存のlayer番号を再利用し、Layer 5を`FN_SCROLL`、Layer 6を`NAPE_MOUSE`、Layer 7を両者が同時に有効な時の競合解消に使う。旧Layer 8/9はtransparentなlegacy layerとして保持する。Layer 1のFN bindingsとsensor-bindingsはそのまま残し、FN keyboard操作をLayer 5へ複写した。Base Layer 0の無変換・Enterにある`&lt150`はタップ時の無変換/Enterと150msのtap-hold設定を保ったまま、ホールド先をLayer 5に変更した。
+
+Layer 6は既存のNape mouse bindingsと700ms temporary-layer timeoutを維持する。Layer 7はLayer 5と6の双方がactiveな時だけ有効になり、マウスbuttonと競合する位置19/20/21をFNの`N5`/`N6`/`KP_PLUS`として解決する。他の位置はtransparent。既定レイヤー優先順位ではLayer 7が6より優先されるため、NAPE_MOUSEが残った状態でFN_SCROLLを押してもこの3キーのFN操作を通す。
+
+Layer 5中はNape XYを既存の`zip_xy_to_scroll_mapper`と`zip_scroll_scaler 1/8`へ通し、慣性trackerは入力を通過させながら速度だけ記録する。停止40ms後に閾値を超える速い動きだけ、別のvirtual input deviceから慣性wheel eventを出す。system workqueue上のdelayable workを16ms周期で使い、Q8 EMA `(old×3 + sample)/4`、方向反転時の速度リセット、減衰230/256、最低開始速度8 raw counts/tick、停止閾値1 count/tick、最大1200ms、軸ごとのfractional remainderを使用する。慣性listenerにはXY mapperとtemporary-layer processorがないためLayer 6の700ms timerに入らない。Layer 5解除時とNape切断時は速度・端数を消してworkをキャンセルし、work側でもLayer 5を再確認する。
+
+固定commitのZMK/Zephyr依存は更新していない。`Nape HID parser` run [36494844006](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844006)はinertia math (ASan/UBSan)・parser・layer validatorが成功。`Build ZMK firmware` run [36494844832](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844832)はNape variant、Cornix Left/Right、rollbackを含む全matrix buildに成功した。レイヤー検証では無変換とEnterの両方がLayer 5を指すことも確認した。
+
+Prospector通常Nape版のRAM/Flashは、変更前のLayer 8 scroll buildで247,290 / 262,144 bytes (94.33%)・582,056 bytes、慣性とlayer migration追加後で247,546 / 262,144 bytes (94.43%)・584,124 bytes。差分はRAM +256 bytes、Flash +2,068 bytes。変更前値は固定west manifestによる比較buildのZephyr memory-region report、変更後値は同一設定の通常Nape build reportから取得した。
+
+最新の通常UF2は[firmware run 36494844832](https://github.com/haneta007/cornix-lp-zmk-/actions/runs/36494844832)の`firmware` artifact内にある`cornix_prospector_nape_bridge_nosd.uf2`。ローカル保管先は`firmware/nape-scroll-inertia-36494844832/cornix_prospector_nape_bridge_nosd.uf2`、サイズ1,168,384 bytes、SHA256 `FF55C6E37BCFBF3E27B0DFF362A022CD21AA0EF8F1B4ADCE165205A53B68501E`。Prospectorだけに手動で書く。自動flashはしていない。実機では無変換/Enterのtap-hold、FN操作と同時のスクロール、fling後の慣性、Layer 5解除直後の停止、Layer 6残留時のFN操作、button/wheel、左右split typingを確認する。40ms開始遅延と慣性係数は実機操作感で調整する。
+
 ## 状態と安全な切り戻し
 
 Nape BLE bridgeの基準実装は `feat/nape-pro-ble-bridge`。本作業はそこから続く `feat/nape-scroll-inertia` で行い、`feat/nape-scroll-modifier`、`dev`、既存の `cornix_prospector_dongle_nosd` artifactは変更・削除していない。Prospectorへ自動書き込みはしていない。Nape Pro本体のファームウェアも変更していない。
